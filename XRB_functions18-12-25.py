@@ -9,7 +9,6 @@ import pandas as pd                                          # type: ignore
 
 import posydon.utils.constants as const                      # type: ignore
 from posydon.utils.common_functions import roche_lobe_radius # type: ignore
-from posydon.utils.common_functions import bondi_hoyle as posy_bondi_hoyle  # type: ignore
 from posydon.utils.posydonwarning import Pwarn               # type: ignore
 
 # !  For the moment, all the functions (except XRB_selection_function()) use scalar inputs only. Changes have to be done in order to support array inputs. 
