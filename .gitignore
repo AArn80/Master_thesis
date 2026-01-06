@@ -1,0 +1,29 @@
+# Jupyter
+.ipynb_checkpoints/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Data / results
+data/
+results/
+output/
+*.h5
+*.csv
+*.npy
+*.out
+*.slurm
+*.sh
+
+# Figures
+*.png
+*.pdf
+
+# Logs
+*.log
+
+# OS / editors
+.DS_Store
+.vscode/
