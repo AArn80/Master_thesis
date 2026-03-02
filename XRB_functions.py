@@ -186,12 +186,12 @@ def Orbital_sep_and_velo_from_period(Mass1, Mass2, period_days):
     return a_cm, V_orb
 
 #* Checked and DocString updated
-#! Maybe problem with winds
+
 def BHL_mdot_acc(Macc_Msun, donor_mass_Msun, accretor_type, 
                  Mdot_w_Msun_per_yr, a_cm, ecc, V_wind, **kwargs):
     """
     Calculate the Bondi-Hoyle Littleton accretion rate through winds in gram per second.\n 
-    User can choose if the winds, in presence of a black hole, must form a disk before being accreted with the keyword 'wind_disk_formation'. 
+    User can choose if the winds, in presence of a black hole, must form a disk before being accreted with the keyword 'Wind_Disk_BH_formation'. 
 
     Parameters
     ----------
@@ -213,9 +213,9 @@ def BHL_mdot_acc(Macc_Msun, donor_mass_Msun, accretor_type,
     **kwargs : dict, optional
         Additional keyword arguments:
         - alpha_BHL (float, default = 1.5) : Alpha parameter of Bondi-Hoyle Littleton (alpha_BHL ∈ [1, 2]).
-        - wind_disk_formation (bool, default = False) : Whether to check for disk formation criteria around BH accretor.
-        - r_ISCO (float) : ISCO radius [cm] of a BH accretor (required if wind_disk_formation=True).
-        - eta (float) : Radiative efficiency (dimensionless) (required if wind_disk_formation=True).
+        - Wind_Disk_BH_formation (bool, default = False) : Whether to check for disk formation criteria around BH accretor.
+        - r_ISCO (float) : ISCO radius [cm] of a BH accretor (required if Wind_Disk_BH_formation=True).
+        - eta (float) : Radiative efficiency (dimensionless) (required if Wind_Disk_BH_formation=True).
         
         Any unknown keys will raise a TypeError.
             
@@ -236,19 +236,19 @@ def BHL_mdot_acc(Macc_Msun, donor_mass_Msun, accretor_type,
             *Phys. Rev. D*, 89(12), 127302. https://arxiv.org/abs/1406.2181
     """
     #===== Optional parameters =====
-    allowed_keys = {'alpha_BHL', 'wind_disk_formation', 'r_ISCO', 'eta'}
+    allowed_keys = {'alpha_BHL', 'Wind_Disk_BH_formation', 'r_ISCO', 'eta'}
 
     alpha_BHL = kwargs.get('alpha_BHL', 1.5) # Alpha parameter of Bondi-Hoyle Littleton
     if not (1.0 <= alpha_BHL <= 2.0):
         raise ValueError("alpha_BHL must be in the range [1.0, 2.0]")
     
-    wind_disk_formation = kwargs.get('wind_disk_formation', False)
+    Wind_Disk_BH_formation = kwargs.get('Wind_Disk_BH_formation', False)
     r_ISCO = kwargs.get('r_ISCO', None)
     eta = kwargs.get('eta', None)
 
-    if wind_disk_formation and accretor_type == 'BH':
+    if Wind_Disk_BH_formation and accretor_type == 'BH':
         if r_ISCO is None or eta is None:
-            raise ValueError("r_ISCO and eta must be provided when wind_disk_formation is True.")
+            raise ValueError("r_ISCO and eta must be provided when Wind_Disk_BH_formation is True.")
         
     if not allowed_keys.issuperset(kwargs.keys()):
         raise TypeError(f"BHL_mdot_acc: unknown parameter {sorted(set(kwargs.keys()) - allowed_keys)}")
@@ -310,7 +310,7 @@ def BHL_mdot_acc(Macc_Msun, donor_mass_Msun, accretor_type,
     Mdot_BHL = frac * Mdot_w  # [g/s]
 
     # From [2], check if an accretion disk can form around the BH accretor
-    if wind_disk_formation and accretor_type == 'BH':
+    if Wind_Disk_BH_formation and accretor_type == 'BH':
         gamma = r_ISCO/(6.0 * const.standard_cgrav * Macc / const.clight**2) # From [4]
         q = Mdon / Macc
         Rdisk_div_RISCO = ((2/3) * (eta / (1 + q))**2 * (V_orb /(const.clight * 0.01))**(-2) 
@@ -351,10 +351,10 @@ def Eddington_limit(accretor_mass, Donor_surface_H1, eta):
     return Mdot_Edd_gps, L_edd
 
 #* Checked and DocString updated
-#! Maybe problem with winds
+
 def Wind_velocity_BHL(accretor_mass, accretor_type, donor_mass, donor_logR, donor_logL, Log_Mdot_wind, 
                       donor_surface_H1, donor_He_core_mass, a_cm, 
-                      Wind_fed_scheme = None, Vwind_scheme ='Hurley+2002'):
+                      Wind_fed_scheme = None, Wind_velo_scheme ='Hurley+2002'):
     '''
     Compute the wind velocity from the donor/companion star in cm/s.
     For wind-fed systems, a wind scheme calculation can be chosen and for donor star a filling threshold for RLO can be enabled [[1]_][[4]_]
@@ -379,7 +379,7 @@ def Wind_velocity_BHL(accretor_mass, accretor_type, donor_mass, donor_logR, dono
         Orbital separation of the binary system in [cm]
     Wind_fed_scheme : str, (default=None)
         If 'HiraiMandel21', the donor star must fill at least 80% of its Roche lobe to get winds [[4]_]. Default is None.
-    Vwind_scheme : str (default='Hurley+2002')
+    Wind_velo_scheme : str (default='Hurley+2002')
         Scheme to compute the wind velocity. Can be either 'Hurley+2002' or 'Kudritzki+2000'.
     
     Returns
@@ -411,7 +411,7 @@ def Wind_velocity_BHL(accretor_mass, accretor_type, donor_mass, donor_logR, dono
 
         #===== Wind velocity calculation schemes =====
         # [2] Hurley et al. 2002
-        if Vwind_scheme == 'Hurley+2002':
+        if Wind_velo_scheme == 'Hurley+2002':
             # For H-rich stars
             if donor_surface_H1 > 0.01:
                 if donor_He_core_mass > 0.0 and 10.0**donor_logR > 900.0:
@@ -433,7 +433,7 @@ def Wind_velocity_BHL(accretor_mass, accretor_type, donor_mass, donor_logR, dono
             f_m = float(np.sqrt(beta))
 
         # [3] Kudritzki & Puls 2000
-        elif Vwind_scheme == 'Kudritzki+2000':
+        elif Wind_velo_scheme == 'Kudritzki+2000':
             if Teff >= 21000:
                 f_m = 2.65
             elif Teff <= 10000:
@@ -441,8 +441,8 @@ def Wind_velocity_BHL(accretor_mass, accretor_type, donor_mass, donor_logR, dono
             else:
                 f_m = 1.4
         else:
-            raise ValueError(f"Invalid scheme '{Vwind_scheme}'. Choose 'Hurley+2002' or 'Kudritzki+2000'.")
-    
+            raise ValueError(f"Invalid scheme '{Wind_velo_scheme}'. Choose 'Hurley+2002' or 'Kudritzki+2000'.")
+
         V_esc = np.sqrt(2.0 * const.standard_cgrav * donor_mass * const.Msun / (10**donor_logR * const.Rsun)) # [cm/s] 
         V_wind = f_m * V_esc  # [cm/s]
 
@@ -452,7 +452,7 @@ def Wind_velocity_BHL(accretor_mass, accretor_type, donor_mass, donor_logR, dono
                 slope = (3.7 - 3.25) / (-2.5 + 5.25)
             else:
                 slope = (3.25 - 3.75) / (-5.25 + 7.25)
-            V_wind = 10 ** (slope * Log_Mdot_wind + 3.25 + 5.25 * slope) * 1000
+            V_wind = 10 ** (slope * Log_Mdot_wind + 3.25 + 5.25 * slope) * 1e5  # Convert from km/s to cm/s
         else:
             pass
 
@@ -547,48 +547,6 @@ def stefan_boltzmann_law(Luminosity, Radius):
     
     return Teff
 
-#* Checked and DocString updated 
-#? Need to be included in the final data frame
-def XRB_types(accretor_state, donor_state, donor_mass, ):
-    '''
-    Determine the type of X-ray binary (XRB) system based on the mass of the donor star. 
-    The classification is as follows:
-    - High-Mass X-ray Binary (HMXB): Donor mass ≥ 8 M⊙
-    - Low-Mass X-ray Binary (LMXB): Donor mass ≤ 1 M⊙
-    - Intermediate-Mass X-ray Binary (IMXB): 1 M⊙ < Donor mass < 8 M⊙
-    - Non-X-ray Binary (Non-XRB): If the accretor is not a neutron star (NS) or black hole (BH), 
-      or if the donor is a compact object (NS, BH, or white dwarf (WD)).
-    
-    Parameters
-    ----------
-    accretor_state : str
-        State of the accretor. Can be either 'NS' or 'BH'.
-    donor_state : str
-        State of the donor star.
-    donor_mass : float
-        Mass of the donor star in [M⊙].
-    
-    Returns
-    -------
-    XRB_type : str
-        Type of the X-ray binary system. Can be 'HMXB', 'IMXB', 'LMXB', or 'Non-XRB'.
-    
-    '''
-    _allowed_accretor_states = ['NS', 'BH']
-    _avoid_donor_states = ['NS', 'BH', 'WD']
-    if (accretor_state in _allowed_accretor_states) and (donor_state not in _avoid_donor_states):
-
-        if donor_mass >= 8.0:
-            XRB_type = 'HMXB'  # High-Mass X-ray Binary
-        elif donor_mass <= 1.0 :
-            XRB_type = 'LMXB'  # Low-Mass X-ray Binary
-        else:
-            XRB_type = 'IMXB'  # Intermediate-Mass X-ray Binary
-    else:
-        XRB_type = 'Non-XRB'  # Not an X-ray binary
-
-    return XRB_type
-
 #* Checked and DocString updated
 def Compute_Lx(donor_mass, donor_log_R, donor_logL, accretor_mass, accretor_log_R, accretor_type, 
                donor_log_mdot, log_Mtransfer_rate, accretor_log_mdot,
@@ -633,19 +591,19 @@ def Compute_Lx(donor_mass, donor_log_R, donor_logL, accretor_mass, accretor_log_
         Additional keyword arguments:
         - alpha_BHL (float, default=1.5) : efficiency parameter for Bondi-Hoyle-Lyttleton accretion.
         - Wind_fed_scheme (str, default=None) : Check whether the donor star fills at least 80% of its Roche lobe to get winds. Option : 'HiraiMandel21' chooses ≥ 80% filled systems.
-        - Vwind_scheme (str, default='Hurley+2002') : Wind velocity scheme to use in Wind_velocity_BHL function. 
+        - Wind_velo_scheme (str, default='Hurley+2002') : Wind velocity scheme to use in Wind_velocity_BHL function. 
         Can be either 'Hurley+2002' or 'Kudritzki+2000'.
-        - wind_disk_formation (bool, default=False) : Check whether for disk formation criteria around BH accretor.
+        - Wind_Disk_BH_formation (bool, default=False) : Check whether for disk formation criteria around BH accretor.
 
         Any unknown keys will raise a TypeError.
 
     Returns
     -------
-    dict :
+    Data : dict
     
         - Lx_Total : float
             Total X-ray luminosity in [erg/s].
-        Beaming : float
+        - Beaming : float
             Beaming factor (dimensionless).
         - Edd_state : str
             State of the system according to its Eddington limit. Can be either 'Sub-Eddington' or 'Super-Eddington'.
@@ -672,7 +630,7 @@ def Compute_Lx(donor_mass, donor_log_R, donor_logL, accretor_mass, accretor_log_
     """
 
     #===== Optional parameters =====
-    allowed_keys = {'alpha_BHL', 'Wind_fed_scheme', 'Vwind_scheme', 'wind_disk_formation', 'B_surf'}
+    allowed_keys = {'alpha_BHL', 'Wind_fed_scheme', 'Wind_velo_scheme', 'Wind_Disk_BH_formation', 'B_surf'}
 
     alpha_BHL = kwargs.get('alpha_BHL', 1.5)
     if alpha_BHL < 1.0 or alpha_BHL > 2.0:
@@ -682,11 +640,11 @@ def Compute_Lx(donor_mass, donor_log_R, donor_logL, accretor_mass, accretor_log_
     if Wind_fed_scheme not in {None, 'HiraiMandel21'}:
         raise ValueError(f"Invalid Wind_fed_scheme '{Wind_fed_scheme}'. Choose None or 'HiraiMandel21'.")
     
-    Vwind_scheme = kwargs.get('Vwind_scheme', 'Hurley+2002')
-    if Vwind_scheme not in {'Hurley+2002', 'Kudritzki+2000'}:
-        raise ValueError(f"Invalid scheme '{Vwind_scheme}'. Choose 'Hurley+2002' or 'Kudritzki+2000'.")
+    Wind_velo_scheme = kwargs.get('Wind_velo_scheme', 'Hurley+2002')
+    if Wind_velo_scheme not in {'Hurley+2002', 'Kudritzki+2000'}:
+        raise ValueError(f"Invalid scheme '{Wind_velo_scheme}'. Choose 'Hurley+2002' or 'Kudritzki+2000'.")
     
-    wind_disk_formation = kwargs.get('wind_disk_formation', False)
+    Wind_Disk_BH_formation = kwargs.get('Wind_Disk_BH_formation', False)
 
     B_surf = kwargs.get('B_surf', None)
     if B_surf is not None:
@@ -703,67 +661,59 @@ def Compute_Lx(donor_mass, donor_log_R, donor_logL, accretor_mass, accretor_log_
         eta, _ = NS_efficiency(accretor_mass, accretor_log_R, B_surf = B_surf)
     elif accretor_type == 'BH':
         _, r_ISCO, eta = BH_efficiency(accretor_mass, accretor_spin)
-    else: # Non compact accretor case (Lx_Total, Beaming, Edd_state)
-        return {'Lx_total': np.nan, 'Beaming': 1.0, 'Edd_state': 'N/A'}
+    else: # Non compact accretor case
+        Data = {'Lx_total': 1e-54, 'Beaming': 1.0, 'Edd_state': np.nan, 'Mdot_BHL_gps' : 0.0, 'Mdot_RLO_gps' : 0.0, 
+                'Edd_ratio': 0.0, 'Mdot_Edd_gps': 0.0}
+        return Data
     
     if not np.isfinite(eta) or eta <= 0.0:
         eta = 1e-6 # Protect against zero or non-finite efficiency
 
-    #===== Masses and mass rates ======
-    # Mass-transfer rate (donor -> vicinity of accretor)[Msun/yr]
-    Mdot_RLO_Msunyr = 0.0 if log_Mtransfer_rate is None or not np.isfinite(log_Mtransfer_rate) else 10.0**float(log_Mtransfer_rate)
+    #===== Mass rates and other parameters ======
+
+    # Mass-transfer rate (donor -> vicinity of accretor) through RLO
+    Mdot_RLO_Msunyr = (0.0 if log_Mtransfer_rate is None or not np.isfinite(log_Mtransfer_rate) else 10.0**float(log_Mtransfer_rate))
     Mdot_RLO_gps = Mdot_RLO_Msunyr * const.Msun / const.secyer  # [g/s]
 
-    # Accreted mass [Msun/yr]
-    if accretor_log_mdot is None or not np.isfinite(accretor_log_mdot):
-        Mdot_acc_Msunyr = Mdot_RLO_Msunyr  # All transfered material is accreted
-    else:
-        Mdot_acc_Msunyr = 10.0**float(accretor_log_mdot)
-    Mdot_acc_gps = Mdot_acc_Msunyr * const.Msun / const.secyer # [g/s]
-
     # Donor mass loss rate (total, including RLO + winds) [Msun/yr]
-    Mdot_donor_total_Msunyr = 0.0 if donor_log_mdot is None or not np.isfinite(donor_log_mdot) else 10.0**float(donor_log_mdot)
+    Mdot_donor_total_Msunyr = (0.0 if donor_log_mdot is None or not np.isfinite(donor_log_mdot) else 10.0**float(donor_log_mdot))
     mdot_wind_only_Msunyr = max(Mdot_donor_total_Msunyr - Mdot_RLO_Msunyr, 0.0) # [Msun/yr]
-    log_Mdot_wind = np.log10(mdot_wind_only_Msunyr) if mdot_wind_only_Msunyr > 0.0 else -99.0
+    log_Mdot_wind = np.log10(mdot_wind_only_Msunyr) if mdot_wind_only_Msunyr > 0.0 else -99.0 # No wind when -99
 
-    #===== Additional parameters needed =====
     # Check for hydrogen content at the surface of the donor star : 
     if Donor_H1_surf is None or not np.isfinite(Donor_H1_surf) or Donor_H1_surf < 0.0 or Donor_H1_surf > 1.0:
         Donor_H1_surf = 0.7155 # Default H1 content of a MS star
 
-    # Validate orbital period before using Kepler helper (guard against NaN/zero/negative)
+    # Validate orbital period before using Kepler (guard against NaN/zero/negative)
     if orbital_period_days is None or not np.isfinite(orbital_period_days) or orbital_period_days <= 0.0:
         a_cm = np.nan
-        _wind_ok = False
+        wind_ok = False
     else:
         try:
             a_cm, _ = Orbital_sep_and_velo_from_period(donor_mass, accretor_mass, orbital_period_days)
-            _wind_ok = True
+            wind_ok = True
         except Exception:
             a_cm = np.nan
-            _wind_ok = False
-            return {'Lx_total': np.nan, 'Beaming': 1.0, 'Edd_state': 'N/A'}
+            wind_ok = False
+            Data = {'Lx_total': 1e-54, 'Beaming': 1.0, 'Edd_state': np.nan, 'Mdot_BHL_gps' : 0.0, 'Mdot_RLO_gps' : 0.0, 
+                    'Edd_ratio': 0.0, 'Mdot_Edd_gps': 0.0}
+            return Data
 
-    if _wind_ok:
+    if wind_ok:
             try: 
                 V_wind = Wind_velocity_BHL(accretor_mass, accretor_type, donor_mass, donor_log_R, donor_logL, log_Mdot_wind,
                                            Donor_H1_surf, Donor_He_core_mass, a_cm, 
-                                           Wind_fed_scheme=Wind_fed_scheme, Vwind_scheme=Vwind_scheme)
+                                           Wind_fed_scheme=Wind_fed_scheme, Wind_velo_scheme=Wind_velo_scheme)
             except Exception:
                 V_wind = 0.0
-                _wind_ok = False
+                wind_ok = False
     else:
         V_wind = 0.0
 
-    #===== Eddington ratio =====
-    Mdot_Edd_gps, L_edd = Eddington_limit(accretor_mass, Donor_H1_surf, eta)
-    if not np.isfinite(Mdot_Edd_gps) or Mdot_Edd_gps <= 0.0:
-        Mdot_Edd_gps = 1e-99
+    if wind_ok and (V_wind >= 0.0):
+        BHL_kwargs = dict(alpha_BHL=alpha_BHL, Wind_Disk_BH_formation=Wind_Disk_BH_formation)
 
-    if _wind_ok and (V_wind > 0.0):
-        BHL_kwargs = dict(alpha_BHL=alpha_BHL, wind_disk_formation=wind_disk_formation)
-
-        if wind_disk_formation and accretor_type == 'BH' and r_ISCO is not None and eta is not None:
+        if Wind_Disk_BH_formation and accretor_type == 'BH' and r_ISCO is not None and eta is not None:
             BHL_kwargs.update(r_ISCO=r_ISCO, eta=eta)
         try:
             Mdot_BHL_gps = BHL_mdot_acc(accretor_mass, donor_mass, accretor_type, mdot_wind_only_Msunyr, 
@@ -773,10 +723,18 @@ def Compute_Lx(donor_mass, donor_log_R, donor_logL, accretor_mass, accretor_log_
             Mdot_BHL_gps = 0.0
     else:
         Mdot_BHL_gps = 0.0
-
-    # Eddington ratio
-    Mdot_tot = Mdot_BHL_gps + Mdot_RLO_gps # Total mass accretion rate onto the accretor [g/s]
-    Edd_ratio = Mdot_tot / Mdot_Edd_gps # mdot 
+    
+    if (accretor_log_mdot is not None and np.isfinite(accretor_log_mdot) and float(accretor_log_mdot) > -50.0):
+        Mdot_acc_gps = 10.0**float(accretor_log_mdot) * const.Msun / const.secyer
+    else:
+        Mdot_acc_gps = Mdot_RLO_gps + Mdot_BHL_gps  # Total accreted mass rate [g/s]
+     
+    #===== Eddington ratio =====
+    Mdot_Edd_gps, L_edd = Eddington_limit(accretor_mass, Donor_H1_surf, eta)
+    if not np.isfinite(Mdot_Edd_gps) or Mdot_Edd_gps <= 0.0:
+        Mdot_Edd_gps = 1e-99
+    
+    Edd_ratio = Mdot_acc_gps / Mdot_Edd_gps # Eddington ratio
 
     #===== X-ray luminosity calculation =====
     if Edd_ratio <= 1.0:
@@ -784,18 +742,16 @@ def Compute_Lx(donor_mass, donor_log_R, donor_logL, accretor_mass, accretor_log_
         beaming = 1.0
         Edd_state = 'Sub-Eddington'
     
-    elif Edd_ratio > 1.0 and Edd_ratio <= 150.0:
-        if Edd_ratio > 8.545:
+    else:
+        if Edd_ratio > 150.0:
+            beaming = 3.2e-3 # Max beaming factor from [3] King 2008
+        elif Edd_ratio > 8.545:
             beaming = 73.0 / Edd_ratio**2
-            Lx = L_edd / beaming * (1.0 + np.log(Edd_ratio))
         else: # i.e. 1.0 < Edd_ratio <= 8.545
             beaming = 1.0
-            Lx = L_edd * (1.0 + np.log(Edd_ratio))
-        Edd_state = 'Super-Eddington' 
-    else:
-        beaming = 3.2e-3 # Max beaming factor from [3] King 2008
+
         Lx = L_edd / beaming * (1.0 + np.log(Edd_ratio))
-        Edd_state = 'Super-Eddington'
+        Edd_state = 'Super-Eddington' 
 
     if not np.isfinite(Lx) or Lx < 0.0:
         Lx = 0.0
@@ -806,7 +762,9 @@ def Compute_Lx(donor_mass, donor_log_R, donor_logL, accretor_mass, accretor_log_
             'beaming': float(beaming), 
             'Edd_state': str(Edd_state), 
             'Mdot_BHL_gps': float(Mdot_BHL_gps), 
-            'Mdot_RLO_gps': float(Mdot_RLO_gps)}
+            'Mdot_RLO_gps': float(Mdot_RLO_gps),
+            'Edd_ratio' : float(Edd_ratio),
+            'Mdot_Edd_gps' : float(Mdot_Edd_gps)}
     
     return Data
 
@@ -833,10 +791,10 @@ def XRB_selection_function(history_chunk, oneline_chunk, formation_channels_chun
     **kwargs : dict, optional
         Additional arguments passed :
         - alpha_BHL (float, default = 1.5) : efficiency parameter for Bondi-Hoyle-Lyttleton accretion.
-        - Vwind_scheme (str, default = 'Hurley+2002') : Wind velocity scheme to use in Wind_velocity_BHL function. 
+        - Wind_velo_scheme (str, default = 'Hurley+2002') : Wind velocity scheme to use in Wind_velocity_BHL function. 
         Can be either 'Hurley+2002' _[[4]] or 'Kudritzki+2000' _[[5]].
         - Wind_fed_scheme (str, default = None) : Define a minimum threshold for filling the Roche lobe in order to obtain accretion winds. Option : 'HiraiMandel21' check ≥ 80% filled systems _[[3].
-        - wind_disk_formation (bool, default = False) : Whether to check for disk formation criteria around BH accretor _[[2]].
+        - Wind_Disk_BH_formation (bool, default = False) : Whether to check for disk formation criteria around BH accretor _[[2]].
 
     Returns
     -------
@@ -872,21 +830,21 @@ def XRB_selection_function(history_chunk, oneline_chunk, formation_channels_chun
     '''
     
     #===== Optional parameters **kwargs =====
-    allowed_keys = {'alpha_BHL', 'Vwind_scheme', 'Wind_fed_scheme', 'wind_disk_formation'}
+    allowed_keys = {'alpha_BHL', 'Wind_velo_scheme', 'Wind_fed_scheme', 'Wind_Disk_BH_formation'}
 
     alpha_BHL = kwargs.get('alpha_BHL', 1.5)
     if alpha_BHL < 1.0 or alpha_BHL > 2.0:
         raise ValueError("alpha_BHL should be between 1.0 and 2.0")
 
-    Vwind_scheme = kwargs.get('Vwind_scheme', 'Hurley+2002') # Wind accretion scheme for BHL
-    if Vwind_scheme not in {'Hurley+2002', 'Kudritzki+2000'}:
-        raise ValueError(f"Invalid scheme '{Vwind_scheme}'. Choose 'Hurley+2002' or 'Kudritzki+2000'.")
+    Wind_velo_scheme = kwargs.get('Wind_velo_scheme', 'Hurley+2002') # Wind accretion scheme for BHL
+    if Wind_velo_scheme not in {'Hurley+2002', 'Kudritzki+2000'}:
+        raise ValueError(f"Invalid scheme '{Wind_velo_scheme}'. Choose 'Hurley+2002' or 'Kudritzki+2000'.")
 
     Wind_fed_scheme = kwargs.get('Wind_fed_scheme', None)
     if Wind_fed_scheme not in {None, 'HiraiMandel21'}:
         raise ValueError(f"Invalid Wind_fed_scheme '{Wind_fed_scheme}'. Choose None or 'HiraiMandel21'.")
 
-    wind_disk_formation = kwargs.get('wind_disk_formation', False)
+    Wind_Disk_BH_formation = kwargs.get('Wind_Disk_BH_formation', False)
 
     if not allowed_keys.issuperset(kwargs.keys()):
         # catch typos / unexpected options early
@@ -925,7 +883,7 @@ def XRB_selection_function(history_chunk, oneline_chunk, formation_channels_chun
     DF_XRBs['time'] = oneline_sel['time_f'] * 1e-6 # Myr
     DF_XRBs['time_of_birth'] = oneline_sel['time_i'] * 1e-6 # Myr
     DF_XRBs['metallicity'] = oneline_sel['metallicity']
-    DF_XRBs['state_final'] = oneline_sel['state_f'] # final state of the system
+    DF_XRBs['final_state'] = oneline_sel['state_f'] # final state of the system
     
     #===== Identify accretor/donor and their properties =====
     # Accretor parameters
@@ -968,7 +926,7 @@ def XRB_selection_function(history_chunk, oneline_chunk, formation_channels_chun
 
     Surf_velo = DF_XRBs['Donor_surf_avg_omega_div_omega_crit'].to_numpy(copy=False)
     orbital_period_days = DF_XRBs['Orbital_period'].to_numpy(copy=False)
-    state_binsys = DF_XRBs['state_final'].to_numpy(copy=False)
+    binsys_state = DF_XRBs['final_state'].to_numpy(copy=False)
     donor_mass = DF_XRBs['Donor_mass'].to_numpy(copy=False)
     accretor_mass = DF_XRBs['Accretor_mass'].to_numpy(copy=False)
     donor_logR = DF_XRBs['Donor_logR'].to_numpy(copy=False)
@@ -976,20 +934,27 @@ def XRB_selection_function(history_chunk, oneline_chunk, formation_channels_chun
 
     cols = DF_XRBs[['Donor_mass', 'Donor_logR', 'Donor_logL', 'Accretor_mass','Accretor_logR', 'Accretor_state', 'Log_Mtransfer_rate', 
                     'Donor_logMdot', 'Accretor_logMdot', 'Orbital_period', 'Eccentricity', 'Accretor_spin', 
-                    'Donor_H1_surface_content', 'Donor_He_core_mass']].itertuples(index=False, name=None)
+                    'Donor_H1_surface_content', 'Donor_He_core_mass', 'final_state']].itertuples(index=False, name=None)
     
     n = DF_XRBs.shape[0] # Number of rows in DF_XRBs
     Lx_Total = np.full(n, np.nan)
     Beaming = np.full(n, np.nan)
     Edd_State = np.full(n, None, dtype=object)
+
+    
     Mdot_BHL_array = np.full(n, np.nan)
     Mdot_RLO_array = np.full(n, np.nan)
+    Eddington_ratio = np.full(n, np.nan)
+    mdot_edd_gps = np.full(n, np.nan)
 
+    
     #----- Luminosity calculation Be XRBs -----
     mask_be = ((Surf_velo > 0.7) 
                & (orbital_period_days >= 10.0) & (orbital_period_days <= 300.0) 
-               & (state_binsys == 'detached') 
-               & (donor_mass >= 6.0))
+               & (binsys_state == 'detached') 
+               & (donor_mass >= 6.0)
+               & (DF_XRBs['Donor_state'].to_numpy(copy=False) == 'H-rich_Core_H_burning')
+               )
     
     if np.any(mask_be) :
         period_be = orbital_period_days[mask_be]
@@ -1006,7 +971,7 @@ def XRB_selection_function(history_chunk, oneline_chunk, formation_channels_chun
         DF_XRBs.loc[mask_be, 'Donor_state'] = (DF_XRBs.loc[mask_be, 'Donor_state'].fillna('').astype(str) + ' (Be star)')
 
     #----- Luminosity calculation classical XRBs -----
-       
+
     # keep track of errors
     error_count = 0
     error_indices = []
@@ -1019,9 +984,10 @@ def XRB_selection_function(history_chunk, oneline_chunk, formation_channels_chun
         if mask_be[i]:
             continue
 
-        Dm, DlR, DlL, Am, AlR, Atype, log_mt, Dlog, Alog, Op, ecc, spin, h1, He = row
+        Dm, DlR, DlL, Am, AlR, Atype, log_mt, Dlog, Alog, Op, ecc, spin, h1, He, State_sys = row
         
         res = None
+
         try:
             if (Atype is None) or (not np.isfinite(Dm)) or (not np.isfinite(Am)):
                 continue
@@ -1041,9 +1007,9 @@ def XRB_selection_function(history_chunk, oneline_chunk, formation_channels_chun
                 ecc = ecc,
                 accretor_spin = spin,
                 alpha_BHL = alpha_BHL,
-                Vwind_scheme = Vwind_scheme,
+                Wind_velo_scheme = Wind_velo_scheme,
                 Wind_fed_scheme = Wind_fed_scheme,
-                wind_disk_formation = wind_disk_formation,
+                Wind_Disk_BH_formation = Wind_Disk_BH_formation,
             )
         except Exception as e:
             error_count += 1
@@ -1059,29 +1025,38 @@ def XRB_selection_function(history_chunk, oneline_chunk, formation_channels_chun
         
         try:
             if isinstance(res, dict):
-                lx = res.get('Lx_total', res.get('Lx', np.nan))
-                be = res.get('beaming', res.get('Beaming', 1.0))
-                edd = res.get('Edd_state', res.get('Edd_state_str', 'N/A'))
-                mdot_bhl = res.get('Mdot_BHL_gps', res.get('Mdot_BHL', np.nan))
-                m_rlo = res.get('Mdot_RLO_gps', res.get('M_RLO', np.nan))
+                lx = res.get('Lx_total', 0.0)
+                be = res.get('beaming', 1.0)
+                edd = res.get('Edd_state', 'Sub-Eddington')
+                mdot_bhl = res.get('Mdot_BHL_gps', np.nan)
+                m_rlo = res.get('Mdot_RLO_gps', np.nan)
+                edd_ratio = res.get('Edd_ratio', 0.0)
+                mdot_edd_val = res.get('Mdot_Edd_gps', np.nan)
             elif hasattr(res, '__len__') and len(res) >= 3:
                 lx = res[0]
                 be = res[1]
                 edd = res[2]
                 mdot_bhl = res[3] if len(res) > 3 else np.nan
                 m_rlo = res[4] if len(res) > 4 else np.nan
+                edd_ratio = res[5] if len(res) > 5 else 0.0
+                mdot_edd_val = res[6] if len(res) > 6 else np.nan
             else:
                 lx = res
                 be = 1.0
                 edd = 'N/A'
                 mdot_bhl = np.nan
                 m_rlo = np.nan
+                edd_ratio = 0.0
+                mdot_edd_val = np.nan
 
             Lx_Total[i] = float(lx) if np.isfinite(lx) else np.nan
             Beaming[i] = float(be) if np.isfinite(be) else 1.0
             Edd_State[i] = str(edd)
             Mdot_BHL_array[i] = float(mdot_bhl) if np.isfinite(mdot_bhl) else np.nan
             Mdot_RLO_array[i] = float(m_rlo) if np.isfinite(m_rlo) else np.nan
+            Eddington_ratio[i] = float(edd_ratio) if np.isfinite(edd_ratio) else np.nan
+            mdot_edd_gps[i] = float(mdot_edd_val) if np.isfinite(mdot_edd_val) else np.nan
+
 
         except Exception:
             Lx_Total [i] = Beaming[i] = np.nan   
@@ -1091,10 +1066,14 @@ def XRB_selection_function(history_chunk, oneline_chunk, formation_channels_chun
         # Succinct error display
         print(f"Compute_Lx: {error_count} error(s) in the luminosity calculation (Indices : {error_indices[:10]})")
     
+    
     DF_XRBs['Mdot_BHL_gps'] = Mdot_BHL_array
     DF_XRBs['Mdot_RLO_gps'] = Mdot_RLO_array
     DF_XRBs['Beaming'] = Beaming
     DF_XRBs['Edd_State'] = Edd_State
+
+    DF_XRBs['Eddington_ratio'] = Eddington_ratio
+    DF_XRBs['Mdot_Edd_gps'] = mdot_edd_gps
     DF_XRBs['Lx_Total'] = Lx_Total
 
     return DF_XRBs
@@ -1159,7 +1138,7 @@ def Compute_IMF_normalization_correction(Population, m_min = 0.01, m_max = 200.0
         raise NotImplementedError(f"Compute_IMF_normalization_correction: primary_mass_scheme '{primary_mass_scheme}' not implemented yet.")
     
     if not (0.01 <= m_min < m_A < m_B < m_max <= 300):
-        raise ValueError("Compute_IMF_normalization_correction: m_min and m_max must be within [0.01, 300] and cover at least the range of simulated primary masses.")
+        raise ValueError(f"Compute_IMF_normalization_correction: m_min and m_max must be within [0.01, 300] and cover at least the range of simulated primary masses.\n Primary_mass_min : {m_A}\n Primary_mass_max : {m_B}")
     
     # Kroupa (2001) IMF parameters
     alpha1 = 0.3
@@ -1190,7 +1169,7 @@ def Compute_IMF_normalization_correction(Population, m_min = 0.01, m_max = 200.0
     return float(normalization)
 
 #* Checked and DocString updated
-def Stat_XLF(transient_population, Lmin=1e30, Tot_underlying_mass=1e8, stat_kwargs=None):
+def Stat_XLF(transient_population, Lmin=1e30, SFR = 1.0, stat_kwargs=None):
     '''
     Compute statistics for a given transient population of XRBs, including the weigthed cumulative number of XRBs above a given luminosity.
 
@@ -1200,8 +1179,8 @@ def Stat_XLF(transient_population, Lmin=1e30, Tot_underlying_mass=1e8, stat_kwar
         A transient population of XRBs.
     Lmin : float, optional
         Minimum luminosity threshold for XRBs [erg/s]. Default is 1e30.
-    Tot_underlying_mass : float, optional
-        Total underlying mass for weighting [M⊙]. Default is 1e8.
+    SFR : float, optional
+        Star formation rate [M⊙/yr]. Default is 1.0. (E.g. Milky-Way SFR ~ 1.5 M⊙/yr. Starburst galaxies SFR ~ 10 M⊙/yr)
     stat_kwargs : dict, optional
         A dictionary of population parameters to override the default ones used in the transient population in order to weight the population accordingly.
         See Notes for allowed keys. Default is *None*.
@@ -1249,8 +1228,7 @@ def Stat_XLF(transient_population, Lmin=1e30, Tot_underlying_mass=1e8, stat_kwar
 
     '''
 
-    # Correction factor from 
-    Inverse_CORRECTION_FACTOR = Compute_IMF_normalization_correction(transient_population)
+    #===== Statistics Kwargs =====
 
     # Keys allowed in calculate_model_weights()
     _allowed_pop_keys = {
@@ -1272,7 +1250,6 @@ def Stat_XLF(transient_population, Lmin=1e30, Tot_underlying_mass=1e8, stat_kwar
         'eccentricity_scheme',
         'q_min', 'q_max'
     }
-  
     Pop_params = transient_population.ini_params.copy()
 
     if stat_kwargs is not None:
@@ -1285,9 +1262,11 @@ def Stat_XLF(transient_population, Lmin=1e30, Tot_underlying_mass=1e8, stat_kwar
             Pop_params[key] = value
 
 
-    L = pd.to_numeric(transient_population.population['Lx_Total']).to_numpy(dtype = float)
-    mask = (L >= Lmin) & np.isfinite(L)
-    L_valid = L[mask]
+    # Correction factor from 
+    IMF_corr = Compute_IMF_normalization_correction(transient_population)
+
+    T_window_yr = Pop_params['max_simulation_time'] # Years
+    Tot_underlying_mass = SFR * T_window_yr  # Total underlying mass in M⊙
 
     base_w = transient_population.calculate_model_weights(model_weights_identifier="base_IMF",
                                                           population_parameters=Pop_params)
@@ -1295,61 +1274,18 @@ def Stat_XLF(transient_population, Lmin=1e30, Tot_underlying_mass=1e8, stat_kwar
     if isinstance(base_w, pd.DataFrame):
         # prefer the named column if present, else take first column
         if "base_IMF" in base_w.columns:
-            weights_series = base_w["base_IMF"]
+            weights_series = base_w["base_IMF"].to_numpy(float)
         else:
-            weights_series = base_w.iloc[:, 0]
+            weights_series = base_w.iloc[:, 0].to_numpy(float)
     else:
-        weights_series = base_w  # assume Series-like
-
-    weights_series = weights_series * Inverse_CORRECTION_FACTOR
-
-    w_valid = np.asarray(weights_series, dtype=float)[mask]
-
-    order = np.argsort(L_valid)
-    L_sorted = L_valid[order]
-    w_sorted = w_valid[order]
-
-    N_weighted = np.cumsum(w_sorted[::-1])[::-1] * float(Tot_underlying_mass)
-
-    return L_sorted, N_weighted, weights_series
-
-#? Not needed as in the paper of Misra et al. (2023), the energy flux fraction is set at 0.5. 
-def energy_flux_fraction(band_min, band_max, gamma=1.7, ref_min=0.3, ref_max=10.0):
-    '''
-    Compute the fraction of energy flux in a given energy band for a power-law spectrum N(E) ~ E^-gamma.
-
-    Parameters
-    ----------
-    band_min : float,
-        Minimum energy of the band [keV]. Default is 0.5 keV.
-    band_max : float
-        Maximum energy of the band [keV]. Default is 8.0 keV.
-    gamma : float, optional
-        Photon index of the power-law spectrum. Default is 1.7.
-    ref_min : float, optional
-        Minimum energy of the reference band [keV]. Default is 0.3 keV.
-    ref_max : float, optional
-        Maximum energy of the reference band [keV]. Default is 10.0 keV.
-
-    Returns
-    -------
-    float
-        Fraction of energy flux in the specified band.
-
-    '''
-    if band_min >= band_max or band_min < 0.0 or band_max < 0.0:
-        raise ValueError("Both band values must be non-negative and band_min must be less than band_max")
-    if ref_min >= ref_max or ref_min < 0.0 or ref_max < 0.0:
-        raise ValueError("Both reference values must be non-negative and ref_min must be less than ref_max.")
+        weights_series = np.asarray(base_w, float)  # assume Series-like
     
-    # fraction de flux d'énergie pour N(E) ~ E^-gamma
-    a = 2.0 - gamma
-    if abs(a) < 1e-8:
-        return np.log(band_max/band_min) / np.log(ref_max/ref_min)
-    return (band_max**a - band_min**a) / (ref_max**a - ref_min**a)
+    Weights = weights_series * IMF_corr * Tot_underlying_mass
+
+    return Weights, IMF_corr
 
 #* Checked and DocString updated
-def plot_ccdf(transient_population, ax, weights, mask, label, **ccdf_kwargs):
+def plot_ccdf(transient_population, ax, weights, mask, label, SFR = 1.0, **ccdf_kwargs):
     '''
     Compute the cumulative X-ray luminosity function (CCDF) of a given transient populations. 
     This function returns a *time-averaged* CCDF, i.e. the expected number of X-ray binaries brighter than L at a random time, 
@@ -1360,6 +1296,8 @@ def plot_ccdf(transient_population, ax, weights, mask, label, **ccdf_kwargs):
     ----------
     transient_population : TransientPopulation object
         The transient population.
+    SFR : float, optional
+        Star formation rate [M⊙/yr]. Default is 1.0. (E.g. Milky-Way SFR ~ 1.5 M⊙/yr. Starburst galaxies SFR ~ 10 M⊙/yr)
     ax : matplotlib.axes.Axes
         The axes on which to plot the CCDF (_fig , ax = plt.subplots(*args, **kwargs)_).
     weights : array-like
@@ -1372,8 +1310,6 @@ def plot_ccdf(transient_population, ax, weights, mask, label, **ccdf_kwargs):
         The line style for the CCDF plot.
     **kwargs : dict, optional
         Additional keyword arguments for customization.
-        - T_window_Myr (float, default=100.0) : Time window in Myr.
-        - Total_underlying_mass (float, default=1e8) : Total underlying mass in M⊙.
         - norm_factor (float, default=0.5) : Normalization factor L_x/L_bolo ~ 0.5 from Misra et al.[1] page 4
         - extend_to_edges (bool, default=True) : Whether to extend the CCDF to the edges of the plot.
     
@@ -1402,65 +1338,70 @@ def plot_ccdf(transient_population, ax, weights, mask, label, **ccdf_kwargs):
 
     '''
     #===== kwargs =====
-    controlled_keys = {'T_window_Myr', 'Total_underlying_mass', 'norm_factor', 'extend_to_edges'}
+    controlled_keys = {'norm_factor', 'extend_to_edges'}
 
     plot_keys = dict(label=label)
     extra_plot_keys = {key: var for key, var in ccdf_kwargs.items() if key not in controlled_keys}
     plot_keys.update(extra_plot_keys)
-
-    T_window_Myr = ccdf_kwargs.get('T_window_Myr', 100.0) # Time window in Myr
-    Total_underlying_mass = ccdf_kwargs.get('Total_underlying_mass', 1e8) # Total underlying mass in M⊙
-    norm_factor = ccdf_kwargs.get('norm_factor', 0.5) # Normalization factor L_x/L_bolo ~ 0.5 from Misra et al.[1] page 4
+ 
     extend_to_edges = ccdf_kwargs.get('extend_to_edges', True) # Whether to extend the CCDF to the edges of the plot
-    
-    if T_window_Myr <= 0.0: 
-        raise ValueError("plot_ccdf: T_window_Myr must be > 0.0")
-    if Total_underlying_mass <= 0.0:
-        raise ValueError("plot_ccdf: Total_underlying_mass must be > 0.0")
+    norm_factor = ccdf_kwargs.get('norm_factor', 0.5) # Normalization factor L_x/L_bolo ~ 0.5 from Misra et al.[1] page 4
+
     if norm_factor <= 0.0:
         raise ValueError("plot_ccdf: norm_factor must be > 0.0")
 
-    #===== Calculations =====
+    L = transient_population.population['Lx_Total'].to_numpy(dtype = float) * norm_factor
 
-    SFR =   Total_underlying_mass / (T_window_Myr * 1e6)  # in [M⊙/yr] 
+    T_window_yr = transient_population.ini_params.get('max_simulation_time', 1e8) # Years
+    Total_underlying_mass = SFR * T_window_yr  # Total underlying mass in M⊙
 
-    w_arr = np.asarray(weights, dtype=float) 
-    w_masked = w_arr[np.asarray(mask, dtype=bool)] 
-    Weights = np.asarray(w_masked, dtype=float).reshape(-1) 
+    if Total_underlying_mass <= 0.0:
+        raise ValueError("plot_ccdf: Total_underlying_mass must be > 0.0")
 
-    if 'Beaming' in transient_population.population.columns: 
-        b = transient_population.population.loc[mask, 'Beaming'].to_numpy(dtype = float) 
-        b = np.where(np.isfinite(b) & (b > 0.0), b, 1.0) 
-        Weights = Weights * b 
+    b = transient_population.population['Beaming'].to_numpy(dtype = float)
+    b = np.where(np.isfinite(b) & (b > 0.0), b, 1.0)
 
+    selection = mask & np.isfinite(L) & (L >= 1e30)
 
-    vals = transient_population.population.loc[mask, 'Lx_Total'].to_numpy(dtype = float) * norm_factor
-    Weights = Weights * Total_underlying_mass / SFR 
-    x = np.sort(vals)
-    y = np.cumsum(Weights[np.argsort(vals)][::-1])[::-1]
-    
-    if x.size == 0.0:
-        ax.plot([], [], **plot_keys)
+    if not np.any(selection):
         return
+
+    L_selec = L[selection]
+    Weight_select = weights[selection] * b[selection]
+
+    order = np.argsort(L_selec)
+    L_sorted = L_selec[order]
+    Weights_sorted = Weight_select[order]
+
+    N = np.cumsum(Weights_sorted[::-1])[::-1]  # Cumulative sum from the end to the beginning
+
+
     if extend_to_edges:
         cur_xlim = ax.get_xlim()
         if cur_xlim == (0.0, 1.0):
-            xmin, xmax = float(x[0]), float(x[-1])
+            xmin, xmax = float(L_sorted[0]), float(L_sorted[-1])
         else:
             xmin, xmax = cur_xlim
         cur_ylim = ax.get_ylim()
         if cur_ylim == (0.0, 1.0):
-            ymin = max(np.nextafter(0, 1), y[-1] * 0.1)
+            ymin = np.nextafter(0, 1)
         else:
             ymin = cur_ylim[0]
-        
-        # Extend to edges
-        y0 = float(np.sum(Weights[np.argsort(vals)]))
-        x_ext = np.r_[xmin, x, xmax]
-        y_ext = np.r_[y0, y, ymin]
+
+    # Valeur totale au-dessus du plus petit L
+        y0 = float(np.sum(Weights_sorted))
+
+        x_ext = np.r_[xmin, L_sorted, xmax]
+        y_ext = np.r_[y0, N, ymin]
+
         ax.plot(x_ext, y_ext, **plot_keys)
     else:
-        ax.plot(x, y, **plot_keys)
+        ax.plot(L_sorted, N, **plot_keys)
+
+
+
+#==============================================================================
+# Functions not needed for the moment. Kept here for later use if needed.
 
 #* Checked and DocString updated
 #? Add a control parameter to avoid to recalculate model wieghts if already done before. (calculate_model_weights() in Stat_XLF()) Might be good ? 
@@ -1642,7 +1583,7 @@ def plot_XLF_models(model_list, L_min = 1e30, L_max = 1e43, Total_underlying_mas
             s = style_map[comp]
             # call existing plot function (it accepts color & linestyle)
             plot_ccdf(tp, ax, weights, mask, label=None, linestyle=s['linestyle'], color=s['color'], **ccdf_kwargs)
-
+            
         ax.set_xscale('log')
         ax.set_yscale('log' if yscale == 'log' else 'linear')
         ax.set_xlabel(r'$L_{X,(0.5–8 keV)}$ /erg s$^{-1}$')
@@ -1673,4 +1614,79 @@ def plot_XLF_models(model_list, L_min = 1e30, L_max = 1e43, Total_underlying_mas
     
     return fig
 
+#? Not needed as in the paper of Misra et al. (2023), the energy flux fraction is set at 0.5
+def energy_flux_fraction(band_min, band_max, gamma=1.7, ref_min=0.3, ref_max=10.0):
+    '''
+    Compute the fraction of energy flux in a given energy band for a power-law spectrum N(E) ~ E^-gamma.
 
+    Parameters
+    ----------
+    band_min : float,
+        Minimum energy of the band [keV]. Default is 0.5 keV.
+    band_max : float
+        Maximum energy of the band [keV]. Default is 8.0 keV.
+    gamma : float, optional
+        Photon index of the power-law spectrum. Default is 1.7.
+    ref_min : float, optional
+        Minimum energy of the reference band [keV]. Default is 0.3 keV.
+    ref_max : float, optional
+        Maximum energy of the reference band [keV]. Default is 10.0 keV.
+
+    Returns
+    -------
+    float
+        Fraction of energy flux in the specified band.
+
+    '''
+    if band_min >= band_max or band_min < 0.0 or band_max < 0.0:
+        raise ValueError("Both band values must be non-negative and band_min must be less than band_max")
+    if ref_min >= ref_max or ref_min < 0.0 or ref_max < 0.0:
+        raise ValueError("Both reference values must be non-negative and ref_min must be less than ref_max.")
+    
+    # fraction de flux d'énergie pour N(E) ~ E^-gamma
+    a = 2.0 - gamma
+    if abs(a) < 1e-8:
+        return np.log(band_max/band_min) / np.log(ref_max/ref_min)
+    return (band_max**a - band_min**a) / (ref_max**a - ref_min**a)
+
+#* Checked and DocString updated 
+#TODO Need to be included in the final data frame
+def XRB_types(accretor_state, donor_state, donor_mass, ):
+    '''
+    Determine the type of X-ray binary (XRB) system based on the mass of the donor star. 
+    The classification is as follows:
+    - High-Mass X-ray Binary (HMXB): Donor mass ≥ 8 M⊙
+    - Low-Mass X-ray Binary (LMXB): Donor mass ≤ 1 M⊙
+    - Intermediate-Mass X-ray Binary (IMXB): 1 M⊙ < Donor mass < 8 M⊙
+    - Non-X-ray Binary (Non-XRB): If the accretor is not a neutron star (NS) or black hole (BH), 
+      or if the donor is a compact object (NS, BH, or white dwarf (WD)).
+    
+    Parameters
+    ----------
+    accretor_state : str
+        State of the accretor. Can be either 'NS' or 'BH'.
+    donor_state : str
+        State of the donor star.
+    donor_mass : float
+        Mass of the donor star in [M⊙].
+    
+    Returns
+    -------
+    XRB_type : str
+        Type of the X-ray binary system. Can be 'HMXB', 'IMXB', 'LMXB', or 'Non-XRB'.
+    
+    '''
+    _allowed_accretor_states = ['NS', 'BH']
+    _avoid_donor_states = ['NS', 'BH', 'WD']
+    if (accretor_state in _allowed_accretor_states) and (donor_state not in _avoid_donor_states):
+
+        if donor_mass >= 8.0:
+            XRB_type = 'HMXB'  # High-Mass X-ray Binary
+        elif donor_mass <= 1.0 :
+            XRB_type = 'LMXB'  # Low-Mass X-ray Binary
+        else:
+            XRB_type = 'IMXB'  # Intermediate-Mass X-ray Binary
+    else:
+        XRB_type = 'Non-XRB'  # Not an X-ray binary
+
+    return XRB_type
