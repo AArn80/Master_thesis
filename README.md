@@ -1,4 +1,4 @@
-This file is part of my Master project and contains functions that I use to calculate X-ray luminosity from binary systems. 
+These files are part of my Master project and contain functions that I use to calculate X-ray luminosity from binary systems. 
 
 Input data must be from POSYDON Population class with some specific data. 
 It takes into account Roche-Lobe overflow and winds from the companion star,
