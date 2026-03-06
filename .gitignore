@@ -19,6 +19,7 @@ output/
 *.batch.*
 *merge_metallicity*
 *run_metallicity*
+*.ini
 
 # Figures
 *.png
