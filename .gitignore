@@ -16,6 +16,9 @@ output/
 *.out
 *.slurm
 *.sh
+*.batch.*
+*merge_metallicity*
+*run_metallicity*
 
 # Figures
 *.png
