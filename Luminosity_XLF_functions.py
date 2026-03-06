@@ -4,74 +4,143 @@ from scipy.optimize import newton                                               
 import matplotlib.pyplot as plt                                                              # type : ignore
 import numpy as np
 import pandas as pd                                                                          # type : ignore
+import warnings                                                                              # type : ignore
 
 import posydon                                                                               # type : ignore
-import posydon.utils.constants as const                                                    # type : ignore 
+import posydon.utils.constants as const                                                      # type : ignore 
 from posydon.popsyn.synthetic_population import Population
 from posydon.utils.common_functions import orbital_separation_from_period, roche_lobe_radius # type : ignore
-from posydon.utils.posydonwarning import Pwarn                                               # type : ignore
+from posydon.utils.posydonwarning import Pwarn, POSYDONWarning                               # type : ignore
 
+# Convert POSYDON warnings to exceptions to stop execution on warnings
+warnings.filterwarnings('error', category=POSYDONWarning)
 
-
-def Systems_selection(synthetic_population, filename):
+#===== Functions for popualtion selection and extraction =====
+def Systems_selection_for_XRB(path_file_h5, filename_out):
     """
-    Selects compact-object binaries with non-compact companions and export.
+    Selects compact-object binaries with non-compact companions and exports the new population.
 
     Keeps systems that have one compact object (NS/BH) and a companion that is
-    not in the avoided set, and that are not in excluded system states.
+    neither a compact object nor a massless remnant, and that are not in excluded system states.
 
-    The outputed file can be later use in create_transient_population() with X-ray binary selection function. 
+    The output file(s) can be later used in create_transient_population() with X-ray binary selection function. 
 
     Parameters
     ----------
-    synthetic_population : posydon.Population object
-        Population object containing binary systems.
+    path_file_h5 : str or list of str
+        Path(s) to the input .h5 file(s) containing binary systems.
 
-    filename : str
-        Name for the file that will be exported (without the extension).
+    filename_out : str or list of str
+        Name(s) for the file(s) that will be exported (without the extension).
 
     Returns
     -------
-    exported_file : posydon.Population object
-        The exported_file will be called "filename.h5".
+    None
+        The function exports selected systems to .h5 file(s) at the same location as the input file(s),
+        named as `filename_out.h5`.
+
+    Examples
+    --------
+    For a single file:
+
+    >>> Systems_selection_for_XRB('path/1e+00_Zsun_population.h5', 'BHNS_selected')
+    File: 1e+00_Zsun_population.h5. Selection stored as path/BHNS_selected.h5
+          Number of selected systems: 8000.
+
+    For a list of files:
+
+    >>> files_list = ['path/1e+00_Zsun_population.h5', 'path/1e-01_Zsun_population.h5', 'path/1e-04_Zsun_population.h5']
+    >>> filename_out_list = ['NewName1', 'NewName2', 'NewName3']
+    >>> Systems_selection_for_XRB(files_list, filename_out_list)
+    File: 1e+00_Zsun_population.h5. Selection stored as path/NewName1.h5
+          Number of selected systems: 8000.
+    File: 1e-01_Zsun_population.h5. Selection stored as path/NewName2.h5
+          Number of selected systems: 7543.
+    File: 1e-04_Zsun_population.h5. Selection stored as path/NewName3.h5
+          Number of selected systems: 12756.
 
     """
-
-    if not isinstance(synthetic_population, Population):
-        Pwarn("synthetic_population must be a posydon Population", category="InappropriateValueWarning")
-        return None
-    if not isinstance(filename, str) or filename.strip() == "":
-        Pwarn("filename must be a non-empty string", category="InappropriateValueWarning")
+    
+    #===== Input file(s) validation =====
+    if isinstance(path_file_h5, str):
+        if path_file_h5.strip() == "":
+            Pwarn("file path must be a non-empty string", category="InappropriateValueWarning")
+            return None
+        files = [path_file_h5]
+    elif isinstance(path_file_h5, list):
+        # List of file paths
+        if not all(isinstance(f, str) and f.strip() != "" for f in path_file_h5):
+            Pwarn("All elements in file list must be non-empty strings", 
+                  category="InappropriateValueWarning")
+            return None
+        files = path_file_h5
+    else:
+        Pwarn("file must be a string or a list of strings (file paths)", category="InappropriateValueWarning")
         return None
     
+    # Check that all files are .h5 files
+    if not all(f.endswith('.h5') for f in files):
+        Pwarn("All input files must be .h5 files", category="InappropriateValueWarning")
+        return None
+    
+    #===== Output filename(s) validation =====
+    if isinstance(filename_out, str):
+        if filename_out.strip() == "":
+            Pwarn("filename_out must be a non-empty string", category="InappropriateValueWarning")
+            return None
+        filenames = [filename_out]
+    elif isinstance(filename_out, list):
+        # List of filenames
+        if not all(isinstance(fn, str) and fn.strip() != "" for fn in filename_out):
+            Pwarn("All elements in filename_out list must be non-empty strings", 
+                  category="InappropriateValueWarning")
+            return None
+        filenames = filename_out
+    else:
+        Pwarn("filename_out must be a string or a list of strings", category="InappropriateValueWarning")
+        return None
+    
+    #===== Length consistency check =====
+    if len(files) != len(filenames):
+        Pwarn(f"Number of input files ({len(files)}) must match number of output filenames ({len(filenames)})", 
+              category="InappropriateValueWarning")
+        return None
+    
+    #===== Binaries extraction and export =====
     compact_types = {'NS', 'BH'}
     objects_to_avoid = {'NS', 'BH', 'massless_remnant', 'WD'}  # Avoid double CO, WD, massless remnants companions
     bad_system_states = {'disrupted', 'ERR', 'initial_RLOF'}
 
-    tmp_oneline = synthetic_population.oneline[['state_f', 'S1_state_f', 'S2_state_f', 'event_f']]
+    out_fn = []
 
-    state1, state2, state_sys = tmp_oneline['S1_state_f'], tmp_oneline['S2_state_f'], tmp_oneline['state_f']
+    for fh5, fn in zip(files, filenames):
+        
+        tmp_pop = Population(fh5)
+        tmp_oneline = tmp_pop.oneline[['state_f', 'S1_state_f', 'S2_state_f', 'event_f']]
 
-    mask = (
-        (state1.isin(compact_types) & ~state2.isin(objects_to_avoid) & ~state_sys.isin(bad_system_states))
-        | (state2.isin(compact_types) & ~state1.isin(objects_to_avoid) & ~state_sys.isin(bad_system_states))
-    )
-    idx = tmp_oneline.index[mask]
+        state1, state2, state_sys = tmp_oneline['S1_state_f'], tmp_oneline['S2_state_f'], tmp_oneline['state_f']
+        
+        mask = (
+            (state1.isin(compact_types) & ~state2.isin(objects_to_avoid) & ~state_sys.isin(bad_system_states))
+            | (state2.isin(compact_types) & ~state1.isin(objects_to_avoid) & ~state_sys.isin(bad_system_states))
+        )
+        idx = tmp_oneline.index[mask]
 
-    exported_file = synthetic_population.export_selection(list(idx), f"{filename}.h5")
+        del tmp_oneline
 
-    saved_path = exported_file if exported_file is not None else f"{filename}.h5"
-    print(f"The selected systems are stored in {saved_path}.")
+        # Export the selection to the same directory as the input file
+        output_path = os.path.join(os.path.dirname(fh5) or '.', f"{fn}.h5")
+        tmp_pop.export_selection(list(idx), output_path, overwrite=True)
+        out_fn.append(output_path)
 
-    return exported_file
-    
+        del tmp_pop
+
+        print(f"File: {os.path.basename(fh5)}. Selection stored as " + "\033[1m"  
+              + f"{output_path} \n" + "\033[0m" + 6*' ' 
+              + f"Number of selected systems : {len(idx)}.")
 
 
-#============================================================================================
-selection = Population('BHNS_only.h5')
-selection_oneline =selection.oneline[:]
-
-
+#===== Functions for luminosity and XLF calculations =====
 
 def Eddington_limit(accretor_mass, Donor_surface_H1, eta):
     """
@@ -102,6 +171,7 @@ def Eddington_limit(accretor_mass, Donor_surface_H1, eta):
     return Mdot_Edd_gps, L_edd
 
 
+# Efficiencies 
 def BH_efficiency(Spin): 
     """
     Compute the radiative efficiency of a Kerr black hole (or Schwarzschild BH if spin = 0)
@@ -150,38 +220,6 @@ def BH_efficiency(Spin):
     eta = 1 - E_ISCO
 
     return eta, r_tilde
-
-
-def Stefan_Boltzmann_law(Luminosity, Radius):
-    """
-    Compute the effective temperature from the luminosity and radius of 
-    a star using the Stefan-Boltzmann law.
-    
-    Parameters
-    ----------
-    Luminosity : float
-        Luminosity of the star in [L⊙]
-    Radius : float
-        Radius of the star in [R⊙]
-
-    Returns
-    -------
-    Teff : float
-        Effective temperature of the star in [K].
-
-    """
-
-    #===== Check inputs =====
-    if Luminosity <= 0.0 or Radius <= 0.0:
-        Pwarn(f"Warning: Luminosity and Radius must be positive in L⊙ and R⊙ (PID={os.getpid()}). Returning NaN for Teff.",
-              category="InappropriateValueWarning")
-        return np.nan
-    
-    #===== Calculation =====
-    Teff = ((Luminosity * const.Lsun) / (4.0 * np.pi * (Radius * const.Rsun)**2.0 * const.boltz_sigma))**(1.0/4.0)
-    
-    return Teff
-
 
 def NS_efficiency(Mass,log_radius, B_surf=None, accretor_logMdot=None):
     """
@@ -252,10 +290,41 @@ def NS_efficiency(Mass,log_radius, B_surf=None, accretor_logMdot=None):
     return eta, R
 
 
+# For winds (Bondi-Hoyle Littleton accretion)
+def Stefan_Boltzmann_law(Luminosity, Radius):
+    """
+    Compute the effective temperature from the luminosity and radius of 
+    a star using the Stefan-Boltzmann law.
+    
+    Parameters
+    ----------
+    Luminosity : float
+        Luminosity of the star in [L⊙]
+    Radius : float
+        Radius of the star in [R⊙]
+
+    Returns
+    -------
+    Teff : float
+        Effective temperature of the star in [K].
+
+    """
+
+    #===== Check inputs =====
+    if Luminosity <= 0.0 or Radius <= 0.0:
+        Pwarn(f"Warning: Luminosity and Radius must be positive in L⊙ and R⊙ (PID={os.getpid()}). Returning NaN for Teff.",
+              category="InappropriateValueWarning")
+        return np.nan
+    
+    #===== Calculation =====
+    Teff = ((Luminosity * const.Lsun) / (4.0 * np.pi * (Radius * const.Rsun)**2.0 * const.boltz_sigma))**(1.0/4.0)
+    
+    return Teff
+
 def Wind_velocity_BHL(binary_state, accretor_type, donor_mass, donor_logR, donor_logL, Mdot_wind, 
                       donor_surface_H1, donor_He_core_mass, Donor_RL_radius, 
                       Wind_velo_scheme ='Kudritzki+2000'):
-    '''
+    """
     Compute the wind velocity of the donor star in a detached binary system using either the prescription from :cite:`Hurley et al. 2002`   or :cite:`Kudritzki & Puls 2000`. 
     
     This wind velocity is relevant for the calculation of the BHL accretion rate in **BHL_mdot_acc()** for detached systems, 
@@ -304,7 +373,7 @@ def Wind_velocity_BHL(binary_state, accretor_type, donor_mass, donor_logR, donor
     .. [2] Kudritzki, R.-P., & Puls, J. 2000, ARA&A, 38, 613
     .. [3] Sander A. A. C., Vink J. S., 2020, MNRAS, 499, 873
 
-    '''
+    """
 
     if Wind_velo_scheme not in ['Hurley+2002', 'Kudritzki+2000']:
         Pwarn(f"Wind_velo_scheme '{Wind_velo_scheme}' not recognized. Choose 'Hurley+2002' or 'Kudritzki+2000'. (PID={os.getpid()}).", category="InappropriateValueWarning")
@@ -401,10 +470,9 @@ def Wind_velocity_BHL(binary_state, accretor_type, donor_mass, donor_logR, donor
 
     return V_wind_out
 
-
 def BHL_mdot_acc(Macc_Msun, donor_mass_Msun, accretor_type, donor_log_radius,
                  Mdot_w_Msun_per_yr, a_cm, ecc, V_wind, spin, **kwargs):
-    '''
+    """
     Compute the `Bondi-Hoyle-Lyttleton (BHL)`accretion rate for a detached binary system where the accretion happens through winds.
     These winds are assumed to be isotropic and the accretion is assumed to be spherically symmetric.
 
@@ -448,7 +516,7 @@ def BHL_mdot_acc(Macc_Msun, donor_mass_Msun, accretor_type, donor_log_radius,
     .. [4] Bambi, C., Malafarina, D., & Tsukamoto, N. (2014).
             "Note on the radiation emitted by a thin accretion disk around a rotating compact object."
             *Phys. Rev. D*, 89(12), 127302. https://arxiv.org/abs/1406.2181
-    '''
+    """
 
     #===== Optional parameters =====
     allowed_keys = {'alpha_BHL', 'Wind_Disk_BH_formation'}
@@ -458,10 +526,10 @@ def BHL_mdot_acc(Macc_Msun, donor_mass_Msun, accretor_type, donor_log_radius,
     if not (1.0 <= alpha_BHL <= 2.0):
         Pwarn("alpha_BHL must be in the range [1.0, 2.0]", category="InappropriateValueWarning")
 
-    wind_disk = kwargs.get('Wind_Disk_BH_formation', False)
-    if not isinstance(wind_disk, bool):
+    wind_disk_BH = kwargs.get('Wind_Disk_BH_formation', False)
+    if not isinstance(wind_disk_BH, bool):
         Pwarn("Wind_Disk_BH_formation must be a boolean value (True or False)", category="InappropriateValueWarning")
-        wind_disk = False
+        wind_disk_BH = False
 
     if unknown:
         Pwarn(f"BHL_mdot_acc: unknown parameter(s): {unknown} (PID={os.getpid()})", category="InappropriateValueWarning")
@@ -554,7 +622,7 @@ def BHL_mdot_acc(Macc_Msun, donor_mass_Msun, accretor_type, donor_log_radius,
         Mdot_BHL = frac * Mdot_w_cgs
 
         # From [3], check if an accretion disk can form around the BH accretor
-        if wind_disk and acc_type_i == 'BH':
+        if wind_disk_BH and acc_type_i == 'BH':
             eta_bh, r_ISCO_bh = BH_efficiency(spin_i)
             gamma = r_ISCO_bh / (6.0 * const.standard_cgrav * Macc_cgs / const.clight**2) # From [4]
             q = Mdon_cgs / Macc_cgs
@@ -570,8 +638,9 @@ def BHL_mdot_acc(Macc_Msun, donor_mass_Msun, accretor_type, donor_log_radius,
     return Mdot_BHL_gps if Mdot_BHL_gps.shape else float(Mdot_BHL_gps)
 
 
+# Luminosities calculations
 def Be_XRB_Lx(period, filtered = True):
-    '''
+    """
     Compute the X-ray luminosity of a system containing a Be star as companion. The donor star should have [[1]_]:
     - Surface velocity higher than 70% of its critical velocity
     - Orbital period between 10 and 300 days
@@ -610,8 +679,7 @@ def Be_XRB_Lx(period, filtered = True):
     .. [2] Dai, Hai-Lang ;  Liu, Xi-Wei ;  Li, Xiang-Dong (2006), Equation (11). 
            *Exploration of the Ps-Porb Relation for Wind-fed X-Ray Pulsars*.
            https://doi.org/10.1086/508735
-
-    '''
+    """
 
     if not filtered: 
         Pwarn(f"Be_XRB_Lx: Population not filtered for Be systems. Returning Lx = 0.0 for all systems (PID={os.getpid()}).", category="InappropriateValueWarning", stacklevel=2)
@@ -622,11 +690,10 @@ def Be_XRB_Lx(period, filtered = True):
 
     return Lx
 
-
 def L_bolo(bin_state, lg_mtransfer_rate, acc_log_mdot, donor_log_mdot, acc_state, donor_log_L, 
            Macc, Mdonor, Acc_log_radius, Donor_log_radius, Donor_surface_H1, donor_He_core_mass, 
            Donor_RL_radius, a_cm, ecc, spin, B_surface=None, **kwargs):
-    ''' 
+    """ 
     This function calculates the bolometric luminosity (L_bolo) of a binary system based on its final 
     state and various physical parameters of the accretor and donor stars. 
     
@@ -709,7 +776,7 @@ def L_bolo(bin_state, lg_mtransfer_rate, acc_log_mdot, donor_log_mdot, acc_state
            *Accretion in compact binaries: the Eddington limit and beaming.*. 
            Monthly Notices of the Royal Astronomical Society, 385, L113.  
            https://ui.adsabs.harvard.edu/abs/2008MNRAS.385L.113K
-    '''
+    """
 
     #===== Optional parameters =====
     allowed_keys = {'high_wind_rate', 'alpha_BHL', 'Wind_Disk_BH_formation', 'Wind_velo_scheme'}
@@ -769,7 +836,7 @@ def L_bolo(bin_state, lg_mtransfer_rate, acc_log_mdot, donor_log_mdot, acc_state
     # Winds
     acc_mdot_detached = np.where(np.isfinite(acc_log_mdot), 10.0**acc_log_mdot * const.Msun / const.secyer, 0.0)
 
-    is_BHL_system = mask_detached & (acc_log_mdot <=-60.0)
+    is_BHL_system = mask_detached & (acc_log_mdot >=-60.0)
 
     # If acc_log_mdot <= -60.0, then we calculate Mdot_BHL according to Bondi & Hoyle 1944
     Vwind = Wind_velocity_BHL(bin_state, acc_state, Mdonor, Donor_log_radius, donor_log_L, mdot_wind_only_Msunyr, 
@@ -819,8 +886,10 @@ def L_bolo(bin_state, lg_mtransfer_rate, acc_log_mdot, donor_log_mdot, acc_state
     return Lx, Edd_state, beaming
 
 
+# Selection function to be passed to create_transient_population method
+#! Need to be upadated with lg_wind_mdot instead of donor_log_mdot once the simualtions are done and after checking that it is working on the notebook.
 def XRB_selection_function(history_chunk, oneline_chunk, formation_channels_chunk, **kwargs):
-    ''' 
+    """ 
     A X-ray binary selection function to create a population of XRBs, where we store some important information (Only valid for **Population class** object).
 
     This function identifies X-ray binaries as an accretor and a donor star and returns their properties.
@@ -841,11 +910,13 @@ def XRB_selection_function(history_chunk, oneline_chunk, formation_channels_chun
         A chunk of the formation channels DataFrame of the binaries. Default is None.
     **kwargs : dict, optional
         Additional arguments passed :
-        - alpha_BHL (float, default = 1.5) : efficiency parameter for Bondi-Hoyle-Lyttleton accretion.
+        - alpha_BHL (float, default = 1.5) : Efficiency parameter for Bondi-Hoyle-Lyttleton accretion. Passed to BHL_mdot_acc function. Should be in the range [1.0, 2.0].
         - Wind_velo_scheme (str, default = 'Hurley+2002') : Wind velocity scheme to use in Wind_velocity_BHL function. 
-        Can be either 'Hurley+2002' _[[4]] or 'Kudritzki+2000' _[[5]].
-        - high_wind_rate (str, default = None) : Define a minimum threshold for filling the Roche lobe in order to obtain accretion winds. Option : 'HiraiMandel21' check ≥ 80% filled systems _[[3].
-        - Wind_Disk_BH_formation (bool, default = False) : Whether to check for disk formation criteria around BH accretor _[[2]].
+        Can be either 'Hurley+2002' [[4]_] or 'Kudritzki+2000' [[5]_].
+        - high_wind_rate (str, default = None) : Define a minimum threshold for filling the Roche lobe in order to obtain accretion winds. Option : 'HiraiMandel21' check ≥ 80% filled systems [[3]_].
+        Passed to L_bolo function to compute the luminosity in wind-fed systems.
+        - Wind_Disk_BH_formation (bool, default = False) : Whether to check for disk formation criteria around BH accretor [[2]_]. Passed to BHL_mdot_acc function. 
+        If True, it assumes that infalling material forms a disk around the BH before being accreted, which can increase the accretion efficiency.
 
     Returns
     -------
@@ -859,30 +930,34 @@ def XRB_selection_function(history_chunk, oneline_chunk, formation_channels_chun
            Rocha, K. A., Srivastava, P. M., Sun, M. (2023).  
            *X-ray luminosity function of high-mass X-ray binaries: Studying the signatures of different physical processes using detailed binary evolution calculations*.  
            https://arxiv.org/abs/2209.05505v2
-    .. [2] Sen, K. ,Xu, X. -T., Langer, N., El Mellah, I. , Schurmann, C., Quast, M., A&A 652, A138 (2021)
+    .. [2] Sen, K. ,Xu, X. -T., Langer, N., El Mellah, I. , Schurmann, C., Quast, M., A&A 652, A138 (2021). 
+           Section 2.3.2, Equation 10.
            https://doi.org/10.1051/0004-6361/202141214
-           Section 2.3.2, Equation 10
+           
     .. [3] Hirai, R. & Mandel, I. (2021).  
            *Conditions for accretion disc formation and observability of wind-accreting X-ray binaries.*  
            Publications of the Astronomical Society of Australia, 38, e056.  
            doi:10.1017/pasa.2021.53  
            https://doi.org/10.1017/pasa.2021.53
-    .. [4] Hurley, J. R., Tout, C. A., & Pols, O. R. 2002, MNRAS, 329, 897
-    .. [5] Kudritzki, R.-P., & Puls, J. 2000, ARA&A, 38, 613
+    .. [4] Hurley, J. R., Tout, C. A., & Pols, O. R. 2002, MNRAS, 329, 897.
+           *Evolution of binary stars and the effect of tides on binary populations*.
+           https://ui.adsabs.harvard.edu/abs/2002MNRAS.329..897H
+    .. [5] Kudritzki, R.-P., & Puls, J. 2000, ARA&A, 38, 613. 
+           *Winds from hot stars*. 
+           https://ui.adsabs.harvard.edu/abs/2000ARA&A..38..613K
 
     Examples
     --------
     >>> from posydon.popsyn.synthetic_population import Population
     
-    >>> pop = Population('Simulation_file.h5')
-    >>> Systems_selection_XRB(pop, 'FileName')
+    >>> Systems_selection_XRB('Simulation_file.h5', 'FileName')
 
     >>> selec_pop = Population('FileName.h5')
     >>> Transient_pop = selec_pop.create_transient_population(XRB_selection_function, 'Transient_Name')
     # Or, if you need to use kwargs in the selection function : 
     >>> Transient_pop = selec_pop.create_transient_population(lambda h, o, f: XRB_selection_function(h, o, f, **kwargs), 'Transient_Name')
+    """
 
-    '''
     #===== Control and copy of the dataframes =====
     if not isinstance(oneline_chunk, pd.DataFrame):
         oneline_chunk = oneline_chunk[:]
@@ -1023,11 +1098,11 @@ def XRB_selection_function(history_chunk, oneline_chunk, formation_channels_chun
     return final_df 
 
 
-# Plotting functions Cumulative XLF : 
+#===== Plotting functions -Cumulative XLF ===== 
 
 #* Checked and DocString updated
 def Compute_IMF_normalization_correction(Population, m_min = 0.01, m_max = 200.0):
-    '''
+    """
     Compute the IMF-based normalization correction factor used to relate
     a simulated population of massive-star binaries to the total stellar
     mass formed in a star-forming event.
@@ -1067,7 +1142,7 @@ def Compute_IMF_normalization_correction(Population, m_min = 0.01, m_max = 200.0
     In the final formula, this factor f_0 cancels out, so it is not explicitly calculated here.
     The mass ratio _q_ distribution is assumed to be flat in [0, 1]. 
 
-    '''
+    """
 
     Ini_params = Population.ini_params.copy()
 
@@ -1117,7 +1192,7 @@ def Compute_IMF_normalization_correction(Population, m_min = 0.01, m_max = 200.0
 
 #* Checked and DocString updated
 def Stat_XLF(transient_population, Lmin=1e30, SFR = 1.0, stat_kwargs=None):
-    '''
+    """
     Compute statistics for a given transient population of XRBs, including the weigthed cumulative number of XRBs above a given luminosity.
 
     Parameters
@@ -1171,9 +1246,9 @@ def Stat_XLF(transient_population, Lmin=1e30, SFR = 1.0, stat_kwargs=None):
     Example
     -------
     >>> stat_kwargs = {'primary_mass_min': 0.01, 'primary_mass_max': 200.0, 'q_min': 0.0, 'q_max': 1.0,}
-    >>> L_sorted, N_weighted, weights = Stat_XLF(transient_population, Lmin=1e30, Tot_underlying_mass=1e8, stat_kwargs=stat_kwargs)
+    >>> Weight, IMF_correction = Stat_XLF(transient_population, stat_kwargs=stat_kwargs)
 
-    '''
+    """
 
     #===== Statistics Kwargs =====
 
@@ -1198,7 +1273,7 @@ def Stat_XLF(transient_population, Lmin=1e30, SFR = 1.0, stat_kwargs=None):
 
 
     # Correction factor from 
-    IMF_corr = Compute_IMF_normalization_correction(transient_population)
+    #IMF_corr = Compute_IMF_normalization_correction(transient_population)
 
     T_window_yr = Pop_params['max_simulation_time'] # Years
     Tot_underlying_mass = SFR * T_window_yr  # Total underlying mass in M⊙
@@ -1215,13 +1290,13 @@ def Stat_XLF(transient_population, Lmin=1e30, SFR = 1.0, stat_kwargs=None):
     else:
         weights_series = np.asarray(base_w, float)  # assume Series-like
     
-    Weights = weights_series * IMF_corr * Tot_underlying_mass
+    Weights = weights_series * Tot_underlying_mass
 
-    return Weights, IMF_corr
+    return Weights #, IMF_corr
 
 
 def plot_ccdf(transient_population, ax, weights, mask, label, SFR = 1.0, **ccdf_kwargs):
-    '''
+    """
     Compute the cumulative X-ray luminosity function (CCDF) of a given transient populations. 
     This function returns a *time-averaged* CCDF, i.e. the expected number of X-ray binaries brighter than L at a random time, 
     assuming constant star formation over a time window T_window_Myr.\n
@@ -1248,7 +1323,7 @@ def plot_ccdf(transient_population, ax, weights, mask, label, SFR = 1.0, **ccdf_
         - norm_factor (float, default=0.5) : Normalization factor L_x/L_bolo ~ 0.5 from Misra et al.[1] page 4
         - extend_to_edges (bool, default=True) : Whether to extend the CCDF to the edges of the plot.
     
-        Any other keyword arguments valid for matplotlib.pyplot.plot() can be passed.
+        Any other keyword arguments valid for `matplotlib.pyplot.plot` can be passed.
 
     Returns
     -------
@@ -1270,8 +1345,8 @@ def plot_ccdf(transient_population, ax, weights, mask, label, SFR = 1.0, **ccdf_
     -------
     >>> fig, ax = plt.subplots()
     >>> plot_ccdf(transient_population, ax, weights, mask, label='Label name', color='blue', linestyle='-')
+    """
 
-    '''
     #===== kwargs =====
     controlled_keys = {'norm_factor', 'extend_to_edges'}
 
@@ -1335,8 +1410,8 @@ def plot_ccdf(transient_population, ax, weights, mask, label, SFR = 1.0, **ccdf_
 
 
 def Plot_cumulative_XLF(transient_population, weights, SFR = 1.0, **plot_kwargs):
-    '''
-    Plot the cumulative X-ray luminosity function (CCDF) of a given transient population of XRBs.
+    """
+    Plot the cumulative X-ray luminosity function (CCDF) of a given transient population of XRBs according to style of the Figure 1 in Misra et al. [[1]_].
 
     Parameters
     ----------
@@ -1357,17 +1432,22 @@ def Plot_cumulative_XLF(transient_population, weights, SFR = 1.0, **plot_kwargs)
     ax : matplotlib.axes.Axes
         The axes object containing the plot.
 
+    References
+    ----------
+    .. [1] Misra, D., Kovlakas, K., Fragos, T., Lazzarini, M., Bavera, S. S.,  
+           Lehmer, B. D., Zezas, A., Zapartas, E., Xing, Z., Andrews, J. J., Dotter, A.,  
+           Rocha, K. A., Sr ivastava, P. M., Sun, M. (2023).  
+           *X-ray luminosity function of high-mass X-ray binaries: Studying the signatures of different physical processes using detailed binary evolution calculations*.  
+           https://arxiv.org/abs/2209.05505v2
+
     Notes
     -----
     Allowed keys in plot_kwargs:
-    - norm_factor (float, default=0.5) : Normalization factor L_x/L_bolo ~ 0.5 from Misra et al.[1] page 4
+    - norm_factor (float, default=0.5) : Normalization factor L_x/L_bolo ~ 0.5 from Misra et al. [[1]_], page 4
     - extend_to_edges (bool, default=True) : Whether to extend the CCDF to the edges of the plot.
     
-    Any other keyword arguments valid for matplotlib.pyplot.plot() can be passed and will be forwarded to the plot_ccdf function.
-'''
-
-
-    SFR = 1.0
+    Any other keyword arguments valid for `matplotlib.pyplot.plot` can be passed and will be forwarded to the plot_ccdf function.
+    """
 
     Lumino_range = (transient_population.population['Lx'] >= 1e35) & (transient_population.population['Lx'] <= 1e43)
     RLO = transient_population.population['System_type'] == 'RLO'
@@ -1407,78 +1487,133 @@ def Plot_cumulative_XLF(transient_population, weights, SFR = 1.0, **plot_kwargs)
 
     plt.show()
 
+    return fig, ax
 
 
 
+#===== Functions improved from common_functions.py =====
+
+# For functions that had a "todo" comment in common_functions.py.
+
+def Orbital_separation_from_period(Mass1, Mass2, period_days):
+    """
+    Calculate the orbital separation "a" given the period of the system from the 3rd Kepler's law. 
+
+    Parameters 
+    ---------
+    Mass1 : float 
+        Mass of the central body/accretor where Mass1 > Mass2 in [M⊙]
+    Mass2 : float
+        Mass of the orbiting object/donor where Mass2 < Mass1 in [M⊙]
+    period_days : float 
+        Period of the orbiting companion in [days]
+    
+    Returns
+    -------
+    a_cm : float
+        Orbital separation of the binary system in [Rsun]
+    """
+    if Mass1 is None or Mass2 is None or period_days is None:
+        Pwarn("Mass1, Mass2, and period_days must not be None.", 'InappropriateValueWarning')
+        return np.nan, np.nan
+
+    #===== Control parameters =====
+    mass1 = np.asarray(Mass1, dtype=float)
+    mass2 = np.asarray(Mass2, dtype=float)
+    period_days = np.asarray(period_days, dtype=float)
+
+    if np.any(mass1 < 0.0) or np.any(mass2 < 0.0):
+        Pwarn("Mass1 and Mass2 must be non-negative values.",'InappropriateValueWarning')
+        return np.full_like(period_days, np.nan, dtype=float), np.full_like(period_days, np.nan, dtype=float)
+
+    if np.any(period_days <= 0.0) or np.any(np.isnan(period_days)):
+        Pwarn("Orbital period must be a positive value.",'InappropriateValueWarning')
+        return np.full_like(period_days, np.nan), np.full_like(period_days, np.nan)
+
+    #===== Calculation =====
+    period_seconds = period_days * const.day2sec
+    M1_gr = mass1 * const.Msun
+    M2_gr = mass2 * const.Msun
+    a_cm = (const.standard_cgrav * (M1_gr + M2_gr) * period_seconds**2 /(4 * np.pi**2))**(1/3) # [cm]
+    a_Rsun = a_cm / const.Rsun  # [Rsun]
+
+    return a_Rsun
 
 
+def Orbital_velocity_from_separation_and_period(separation, period_days):
+    """
+    Calculate the orbital velocity of a two body system given the orbital separation and period.
+
+    Parameters
+    ----------
+    separation : float or array of float
+        Orbital separation of a two body system in [R⊙]. 
+    period_days : float or array of float
+        Orbital period of the two body system in [days].
+
+    Returns
+    -------
+    V_orb : float or array of float
+        Orbital velocity of the two body system in [km/s].
+    """
+    
+    separation = np.asarray(separation, dtype=float)
+    period_days = np.asarray(period_days, dtype=float)
+
+    if separation is None or np.any(separation <= 0.0) or np.any(np.isnan(separation)):
+        Pwarn("separation must not be None and must be a positive value.", 
+              'InappropriateValueWarning')
+        return np.nan
+    
+    if period_days is None or np.any(period_days <= 0.0) or np.any(np.isnan(period_days)):
+        Pwarn("period_days must not be None and must be a positive value.", 
+              'InappropriateValueWarning')
+        return np.nan
+
+    V_orb = 2 * np.pi * (separation * const.Rsun) / (period_days * const.day2sec)  / 1e5  # [km/s]
+
+    return V_orb
 
 
-#===== Plotting in histogram =====
+def Orbital_period_from_separation(separation, Mass1, Mass2):
+    """
 
+    Apply the Third Kepler law.
 
-#H1_rich_RLO = RLO_sys['S2_state_f'].str.contains('H-rich|accreted_He', regex=True, na=False)
-#stripped_He_RLO = RLO_sys['S2_state_f'].str.contains('stripped_He', na=False)
-#RLO_BH = RLO_sys['S1_state_f'] == 'BH'
-#RLO_NS = RLO_sys['S1_state_f'] == 'NS'
-#
-#H1_rich_Wind = Wind_sys['S2_state_f'].str.contains('H-rich|accreted_He', regex=True, na=False)
-#stripped_He_Wind = Wind_sys['S2_state_f'].str.contains('stripped_He', na=False)
-#Wind_BH = Wind_sys['S1_state_f'] == 'BH'
-#Wind_NS = Wind_sys['S1_state_f'] == 'NS'
-#
-#Lx_Total = np.concatenate([RLO_sys['Lx'].to_numpy(), Wind_sys['Lx'].to_numpy(), Df_Be['Be_XLF'].to_numpy()])
-#
-#plt.figure(figsize=(6,5), dpi = 150)
-#
-#h, bins = np.histogram(Df_Be['Be_XLF'], bins=np.logspace(35, 45, 100))
-#h = np.cumsum(h[::-1])[::-1]
-#plt.step(bins[:-1], h, where='post', color = '#808080', label='Be-XRBs')
-#
-#h, bins = np.histogram(RLO_sys['Lx'][H1_rich_RLO & RLO_BH], bins=np.logspace(35, 45, 100))
-#h = np.cumsum(h[::-1])[::-1]
-#plt.step(bins[:-1], h, where='post', label = 'RLO-BH-H-rich', color ='#540B0E')
-#
-#h, bins = np.histogram(RLO_sys['Lx'][H1_rich_RLO & RLO_NS], bins=np.logspace(35, 45, 100))
-#h = np.cumsum(h[::-1])[::-1]
-#plt.step(bins[:-1], h, where='post', label = 'RLO-NS-H-rich', color ='#DA1E37')
-#
-#h, bins = np.histogram(RLO_sys['Lx'][stripped_He_RLO & RLO_BH], bins=np.logspace(35, 45, 100))
-#h = np.cumsum(h[::-1])[::-1]
-#plt.step(bins[:-1], h, where='post', label = 'RLO-BH-stripped_He', color='#B760C4')
-#h, bins = np.histogram(RLO_sys['Lx'][stripped_He_RLO & RLO_NS], bins=np.logspace(35, 45, 100))
-#h = np.cumsum(h[::-1])[::-1]
-#plt.step(bins[:-1], h, where='post', label = 'RLO-NS-stripped_He', color='#F9E979')
-#
-#
-#h, bins = np.histogram(Wind_sys['Lx'][H1_rich_Wind & Wind_BH], bins=np.logspace(35, 45, 100))
-#h = np.cumsum(h[::-1])[::-1]
-#plt.step(bins[:-1], h, where='post', label = 'Wind-BH-H-rich', linestyle='--', color='#540B0E')
-#
-#h, bins = np.histogram(Wind_sys['Lx'][H1_rich_Wind & Wind_NS], bins=np.logspace(35, 45, 100))
-#h = np.cumsum(h[::-1])[::-1]
-#plt.step(bins[:-1], h, where='post', label = 'Wind-NS-H-rich', linestyle='--', color='#DA1E37')
-#
-#h, bins = np.histogram(Wind_sys['Lx'][stripped_He_Wind & Wind_BH], bins=np.logspace(35, 45, 100))
-#h = np.cumsum(h[::-1])[::-1]
-#plt.step(bins[:-1], h, where='post', label = 'Wind-BH-stripped_He', linestyle='--', color='#B760C4')
-#
-#h, bins = np.histogram(Wind_sys['Lx'][stripped_He_Wind & Wind_NS], bins=np.logspace(35, 45, 100))
-#h = np.cumsum(h[::-1])[::-1]
-#plt.step(bins[:-1], h, where='post', label = 'Wind-NS-stripped_He', linestyle='--', color='#F9E979')
-#
-#
-#h, bins = np.histogram(Lx_Total, bins=np.logspace(35, 45, 100))
-#h = np.cumsum(h[::-1])[::-1]
-#plt.step(bins[:-1], h, where='post', label = 'Total', color = '#1F77B4')
-#
-#
-#plt.xscale('log')
-#plt.yscale('log')
-#plt.xlim(1e35, 1e44)
-#plt.legend()
+    Parameters
+    ----------
+    separation : float
+        Orbital separation (semi-major axis) in Rsun.
+    Mass1 : float
+        Mass of one of the stars in solar units.
+    Mass2 : float
+        Mass of the other star in solar units.
 
+    Returns
+    -------
+    P_days : float
+        The orbital period in days.
+    """
 
+    if Mass1 is None or Mass2 is None or separation is None:
+        Pwarn("Mass1, Mass2, and separation must not be None.", 'InappropriateValueWarning')
+        return np.nan, np.nan
 
+    mass1 = np.asarray(Mass1, dtype=float)
+    mass2 = np.asarray(Mass2, dtype=float)
+    sep = np.asarray(separation, dtype=float)
+
+    if np.any(mass1 < 0.0) or np.any(mass2 < 0.0):
+        Pwarn("Mass1 and Mass2 must be non-negative values.",'InappropriateValueWarning')
+        return np.full_like(sep, np.nan, dtype=float)
+
+    if np.any(separation < 0.0) or np.any(np.isnan(separation)):
+        Pwarn("Orbital separation must be a non-negative value.",'InappropriateValueWarning')
+        return np.full_like(sep, np.nan, dtype=float)
+    
+    P = 2 * np.pi * np.sqrt((sep * const.Rsun)**3 / (const.standard_cgrav * (mass1 + mass2) * const.Msun)) # [seconds]
+    P_days = P / const.day2sec  # [days]
+
+    return P_days
 
 
