@@ -1263,7 +1263,7 @@ def Stat_XLF(transient_population, Lmin=1e30, SFR = 1.0, stat_kwargs=None):
 
 
     # Correction factor from 
-    IMF_corr = Compute_IMF_normalization_correction(transient_population)
+    #IMF_corr = Compute_IMF_normalization_correction(transient_population)
 
     T_window_yr = Pop_params['max_simulation_time'] # Years
     Tot_underlying_mass = SFR * T_window_yr  # Total underlying mass in M⊙
@@ -1280,9 +1280,9 @@ def Stat_XLF(transient_population, Lmin=1e30, SFR = 1.0, stat_kwargs=None):
     else:
         weights_series = np.asarray(base_w, float)  # assume Series-like
     
-    Weights = weights_series * IMF_corr * Tot_underlying_mass
+    Weights = weights_series * Tot_underlying_mass
 
-    return Weights, IMF_corr
+    return Weights
 
 #* Checked and DocString updated
 def plot_ccdf(transient_population, ax, weights, mask, label, SFR = 1.0, **ccdf_kwargs):
