@@ -321,9 +321,8 @@ def Stefan_Boltzmann_law(Luminosity, Radius):
     
     return Teff
 
-def Wind_velocity_BHL(binary_state, accretor_type, donor_mass, donor_logR, donor_logL, Mdot_wind, 
-                      donor_surface_H1, donor_He_core_mass, Donor_RL_radius, 
-                      Wind_velo_scheme ='Kudritzki+2000'):
+def Wind_velocity_BHL(donor_mass, donor_logR, donor_logL, Donor_log_wind_mdot, 
+                      donor_surface_H1, donor_He_core_mass, Wind_velo_scheme ='Kudritzki+2000'):
     """
     Compute the wind velocity of the donor star in a detached binary system using either the prescription from :cite:`Hurley et al. 2002`   or :cite:`Kudritzki & Puls 2000`. 
     
@@ -334,24 +333,18 @@ def Wind_velocity_BHL(binary_state, accretor_type, donor_mass, donor_logR, donor
 
     Parameters
     ----------
-    binary_state : array of str
-        Final state of the binary system (state_f) to which the wind velocity will be computed. It should be 'detached' for the wind velocity to be relevant.
-    accretor_type : array of str
-        Type of the accretor. It should be 'NS' or 'BH'. 
     donor_mass : array of float
         Mass of the donor star in [M⊙].
     donor_logR : array of float
         Log10(Radius of the donor star) in [R⊙].
     donor_logL : array of float
         Log10(Luminosity of the donor star) in [L⊙].
-    Mdot_wind : array of float
-        Mass loss rate of the donor star through winds in [M⊙/yr].
+    Donor_log_wind_mdot : array of float
+        Log10(Mass loss rate of the donor star through winds) in [M⊙/yr].
     donor_surface_H1 : array of float
         Hydrogen mass fraction at the surface of the donor star.
     donor_He_core_mass : array of float
         Mass of the helium core of the donor star in [M⊙].
-    Donor_RL_radius : array of float
-        Roche lobe radius of the donor star in [R⊙].
     Wind_velo_scheme : str, Default: 'Kudritzki+2000'
         Wind velocity calculation scheme to use. It can be either 'Hurley+2002' or 'Kudritzki+2000'.
         - 'Hurley+2002': It uses the prescription from Hurley et al. 2002, which depends on the mass, He core mass of the donor star, its radius as well as the abundance of hydrogen at surface. It distinguishes between H-rich and He-rich stars.
@@ -380,18 +373,15 @@ def Wind_velocity_BHL(binary_state, accretor_type, donor_mass, donor_logR, donor
         return np.full_like(donor_mass, np.nan, dtype=float)
 
     #===== Loading arrays =====
-    binary_state = np.asarray(binary_state, dtype=object)
-    accretor_arr = np.asarray(accretor_type, dtype=object)
     donor_mass_arr = np.asarray(donor_mass, dtype=float)
     donor_logR_arr = np.asarray(donor_logR, dtype=float)
     donor_logL_arr = np.asarray(donor_logL, dtype=float)
-    Mdot_wind_arr = np.asarray(Mdot_wind, dtype=float)
+    donor_log_wind_mdot_arr = np.asarray(Donor_log_wind_mdot, dtype=float)
     donor_surface_H1_arr = np.asarray(donor_surface_H1, dtype=float)
     donor_He_core_mass_arr = np.asarray(donor_He_core_mass, dtype=float)
-    Donor_RL_radius_arr = np.asarray(Donor_RL_radius, dtype=float)
 
-    arrays = [binary_state,accretor_arr, donor_mass_arr, donor_logR_arr, donor_logL_arr, Mdot_wind_arr,
-              donor_surface_H1_arr, donor_He_core_mass_arr, Donor_RL_radius_arr]
+    arrays = [donor_mass_arr, donor_logR_arr, donor_logL_arr, donor_log_wind_mdot_arr,
+              donor_surface_H1_arr, donor_He_core_mass_arr]
     shapes_non_scalar = {arr.shape for arr in arrays if arr.shape != ()}
     any_scalar = any(arr.shape == () for arr in arrays)
 
@@ -405,18 +395,15 @@ def Wind_velocity_BHL(binary_state, accretor_type, donor_mass, donor_logR, donor
         return np.nan
 
     #===== Calculations =====
-    V_wind_out = np.zeros_like(accretor_arr)
+    V_wind_out = np.zeros_like(donor_mass_arr, dtype=float)
 
-    for idx in np.ndindex(accretor_arr.shape):
-        bin_state = binary_state[idx]
-        acc_type = accretor_arr[idx]
+    for idx in np.ndindex(donor_mass_arr.shape):
         donor_mass_i = donor_mass_arr[idx]
         donor_logR_i = donor_logR_arr[idx]
         donor_logL_i = donor_logL_arr[idx]
-        Mdot_wind_i = Mdot_wind_arr[idx]
+        donor_log_wind_mdot_i = donor_log_wind_mdot_arr[idx]
         donor_surface_H1_i = donor_surface_H1_arr[idx]
         donor_He_core_mass_i = donor_He_core_mass_arr[idx]
-        Donor_RL_radius_i = Donor_RL_radius_arr[idx]
 
         Teff = Stefan_Boltzmann_law(10.0**donor_logL_i, 10.0**donor_logR_i) # [K]
 
@@ -458,11 +445,11 @@ def Wind_velocity_BHL(binary_state, accretor_type, donor_mass, donor_logR, donor
 
         # [3] Sander A. A. C., Vink J. S., 2020, MNRAS, 499, 873 
         if donor_surface_H1_i < 0.4 and Teff >= 1e4:
-            if np.log10(Mdot_wind_i) >= -5.25:
+            if donor_log_wind_mdot_i >= -5.25:
                 slope = (3.7 - 3.25) / (-2.5 + 5.25)
             else:
                 slope = (3.25 - 3.75) / (-5.25 + 7.25)
-            V_wind_val = 10 ** (slope * np.log10(Mdot_wind_i) + 3.25 + 5.25 * slope) * 1e5  # Convert from km/s to cm/s
+            V_wind_val = 10 ** (slope * donor_log_wind_mdot_i + 3.25 + 5.25 * slope) * 1e5  # Convert from km/s to cm/s
         else:
             pass
 
@@ -471,7 +458,7 @@ def Wind_velocity_BHL(binary_state, accretor_type, donor_mass, donor_logR, donor
     return V_wind_out
 
 def BHL_mdot_acc(Macc_Msun, donor_mass_Msun, accretor_type, donor_log_radius,
-                 Mdot_w_Msun_per_yr, a_cm, ecc, V_wind, spin, **kwargs):
+                 donor_log_wind_mdot, a_cm, ecc, V_wind, spin, **kwargs):
     """
     Compute the `Bondi-Hoyle-Lyttleton (BHL)`accretion rate for a detached binary system where the accretion happens through winds.
     These winds are assumed to be isotropic and the accretion is assumed to be spherically symmetric.
@@ -486,8 +473,8 @@ def BHL_mdot_acc(Macc_Msun, donor_mass_Msun, accretor_type, donor_log_radius,
         Type of the accretor. It should be 'NS' or 'BH'.
     donor_log_radius : array of float
         Log10(Radius of the donor star) in [R⊙].
-    Mdot_w_Msun_per_yr : array of float
-        Mass loss rate of the donor star through winds in [M⊙/yr].
+    donor_log_wind_mdot : array of float
+        Log10(Mass loss rate of the donor star through winds) in [M⊙/yr].
     a_cm : array of float
         Orbital separation in [cm].
     ecc : array of float
@@ -539,7 +526,7 @@ def BHL_mdot_acc(Macc_Msun, donor_mass_Msun, accretor_type, donor_log_radius,
     don_mass_arr = np.asarray(donor_mass_Msun, dtype=float)
     acc_type_arr = np.asarray(accretor_type, dtype=object)
     logR_donor_arr = np.asarray(donor_log_radius, dtype=float)
-    mdot_w_arr = np.asarray(Mdot_w_Msun_per_yr, dtype=float)
+    logMdot_w_arr = np.asarray(donor_log_wind_mdot, dtype=float)
     a_arr = np.asarray(a_cm, dtype=float)
     ecc_arr = np.asarray(ecc, dtype=float)
     v_wind_arr = np.asarray(V_wind, dtype=float)
@@ -555,7 +542,8 @@ def BHL_mdot_acc(Macc_Msun, donor_mass_Msun, accretor_type, donor_log_radius,
         Mdon_i = float(don_mass_arr[idx])
         acc_type_i = acc_type_arr[idx]
         Rdon_i = float(10**logR_donor_arr[idx] * const.Rsun)
-        mdot_w_i = float(max(mdot_w_arr[idx], 0.0))
+        logMdot_w_i = float(logMdot_w_arr[idx])
+        mdot_w_i = float(10**logMdot_w_i)
         a_i = float(a_arr[idx])
         ecc_i = float(np.clip(ecc_arr[idx], 0.0, 0.999)) if np.isfinite(ecc_arr[idx]) else 0.0
         v_wind_i = float(v_wind_arr[idx])
@@ -690,7 +678,7 @@ def Be_XRB_Lx(period, filtered = True):
 
     return Lx
 
-def L_bolo(bin_state, lg_mtransfer_rate, acc_log_mdot, donor_log_mdot, acc_state, donor_log_L, 
+def L_bolo(bin_state, lg_mtransfer_rate, acc_log_mdot, donor_log_wind_mdot, acc_state, donor_log_L, 
            Macc, Mdonor, Acc_log_radius, Donor_log_radius, Donor_surface_H1, donor_He_core_mass, 
            Donor_RL_radius, a_cm, ecc, spin, B_surface=None, **kwargs):
     """ 
@@ -716,7 +704,7 @@ def L_bolo(bin_state, lg_mtransfer_rate, acc_log_mdot, donor_log_mdot, acc_state
         Log10 of the mass transfer rate through Roche Lobe Overflow (RLO) in [M⊙/yr].
     acc_log_mdot : array of float
         Log10 of the mass changing rate of the accretor in [M⊙/yr].
-    donor_log_mdot : array of float
+    donor_log_wind_mdot : array of float
         Log10 of the mass changing rate of the donor star in [M⊙/yr].
     acc_state : array of str
         The type of the accretor (e.g. 'NS' or 'BH').
@@ -824,10 +812,6 @@ def L_bolo(bin_state, lg_mtransfer_rate, acc_log_mdot, donor_log_mdot, acc_state
     Mdot_RLO_Msunyr = np.where(np.isfinite(lg_mtransfer_rate), 10.0**lg_mtransfer_rate, 0.0) # [M⊙/yr]
     Mdot_RLO_gps = Mdot_RLO_Msunyr * const.Msun / const.secyer  # [g/s]
 
-    #===== Donor total mass lost =====
-    Mdot_donor_total_Msunyr = np.where(np.isfinite(donor_log_mdot), 10.0**donor_log_mdot, 0.0)
-    mdot_wind_only_Msunyr = np.maximum(Mdot_donor_total_Msunyr - Mdot_RLO_Msunyr, 0.0) # [Msun/yr]
-
     #===== Mdot calculation =====
     Mdot = np.zeros_like(Mdot_RLO_gps)
 
@@ -839,10 +823,10 @@ def L_bolo(bin_state, lg_mtransfer_rate, acc_log_mdot, donor_log_mdot, acc_state
     is_BHL_system = mask_detached & (acc_log_mdot >=-60.0)
 
     # If acc_log_mdot <= -60.0, then we calculate Mdot_BHL according to Bondi & Hoyle 1944
-    Vwind = Wind_velocity_BHL(bin_state, acc_state, Mdonor, Donor_log_radius, donor_log_L, mdot_wind_only_Msunyr, 
-                              Donor_surface_H1, donor_He_core_mass, Donor_RL_radius, Wind_velo_scheme=Wind_velo_scheme)
+    Vwind = Wind_velocity_BHL(Mdonor, Donor_log_radius, donor_log_L, donor_log_wind_mdot, 
+                              Donor_surface_H1, donor_He_core_mass, Wind_velo_scheme=Wind_velo_scheme)
     
-    Mdot_BHL = BHL_mdot_acc(Macc, Mdonor, acc_state, Donor_log_radius, mdot_wind_only_Msunyr, a_cm, ecc, Vwind, spin, **BHL_kwargs)
+    Mdot_BHL = BHL_mdot_acc(Macc, Mdonor, acc_state, Donor_log_radius, donor_log_wind_mdot, a_cm, ecc, Vwind, spin, **BHL_kwargs)
 
     Mdot_detached = np.where(is_BHL_system, Mdot_BHL, acc_mdot_detached)
     
@@ -887,7 +871,6 @@ def L_bolo(bin_state, lg_mtransfer_rate, acc_log_mdot, donor_log_mdot, acc_state
 
 
 # Selection function to be passed to create_transient_population method
-#! Need to be upadated with lg_wind_mdot instead of donor_log_mdot once the simualtions are done and after checking that it is working on the notebook.
 def XRB_selection_function(history_chunk, oneline_chunk, formation_channels_chunk, **kwargs):
     """ 
     A X-ray binary selection function to create a population of XRBs, where we store some important information (Only valid for **Population class** object).
@@ -1031,7 +1014,7 @@ def XRB_selection_function(history_chunk, oneline_chunk, formation_channels_chun
         Acc_log_radius = np.where(is_S1_compact, df['S1_log_R_f'], df['S2_log_R_f'])
         acc_state = np.where(is_S1_compact, df['S1_state_f'], df['S2_state_f'])
         donor_state = np.where(is_S1_compact, df['S2_state_f'], df['S1_state_f'])
-        donor_log_mdot = np.where(is_S1_compact, df['S2_lg_mdot_f'], df['S1_lg_mdot_f'])
+        donor_log_wind_mdot = np.where(is_S1_compact, df['S2_lg_wind_mdot_f'], df['S1_lg_wind_mdot_f'])
         acc_log_mdot = np.where(is_S1_compact, df['S1_lg_mdot_f'], df['S2_lg_mdot_f'])
         donor_He_core_mass = np.where(is_S1_compact, df['S2_he_core_mass_f'], df['S1_he_core_mass_f'])
         spin_acc = np.where(is_S1_compact, df['S1_spin_f'], df['S2_spin_f'])
@@ -1048,7 +1031,7 @@ def XRB_selection_function(history_chunk, oneline_chunk, formation_channels_chun
         B_surface = None 
 
         Lx, Edd_state, beaming = L_bolo(
-            bin_state, lg_mtransfer_rate, acc_log_mdot, donor_log_mdot, acc_state,
+            bin_state, lg_mtransfer_rate, acc_log_mdot, donor_log_wind_mdot, acc_state,
             Donor_log_lum, Macc, Mdonor, Acc_log_radius, Donor_log_radius,
             Donor_surface_H1, donor_He_core_mass, Donor_RL_radius, a_cm, ecc, spin_acc, B_surface,
             **kwargs
@@ -1071,7 +1054,7 @@ def XRB_selection_function(history_chunk, oneline_chunk, formation_channels_chun
         out['Donor_H1_at_surface'] = Donor_surface_H1
         out['Donor_He_Core_mass'] = donor_He_core_mass
         out['Accretor_LogMdot'] = acc_log_mdot
-        out['Donor_LogMdot'] = donor_log_mdot
+        out['Donor_LogWind_Mdot'] = donor_log_wind_mdot
         out['Orbital_separation'] = a_cm
         out['Eccentricity'] = ecc
         out['System_type'] = name
@@ -1090,7 +1073,7 @@ def XRB_selection_function(history_chunk, oneline_chunk, formation_channels_chun
     keep_cols = ['metallicity', 'time',
     'Binary_state','Accretor_state','Accretor spin','Accretor_mass','Accretor_LogR',
     'Donor_state','Donor_mass','Donor_LogR','Donor_Roche_lobe_LogR','Donor_LogL',
-    'Donor_H1_at_surface','Donor_He_Core_mass','Accretor_LogMdot','Donor_LogMdot',
+    'Donor_H1_at_surface','Donor_He_Core_mass','Accretor_LogMdot','Donor_LogWind_Mdot',
     'Orbital_separation','Eccentricity','System_type','Beaming', 'Eddington_state','Lx', 'formation_channel']
 
     final_df = final_df[keep_cols].copy()
@@ -1448,6 +1431,9 @@ def Plot_cumulative_XLF(transient_population, weights, SFR = 1.0, **plot_kwargs)
     
     Any other keyword arguments valid for `matplotlib.pyplot.plot` can be passed and will be forwarded to the plot_ccdf function.
     """
+
+    met = transient_population.population['metallicity'][0] if 'metallicity' in transient_population.population.columns else None
+    title = f"{title} (Z={met:.2e} $Z_{{\odot}}$)" if title and met is not None else title
 
     Lumino_range = (transient_population.population['Lx'] >= 1e35) & (transient_population.population['Lx'] <= 1e43)
     RLO = transient_population.population['System_type'] == 'RLO'
