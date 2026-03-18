@@ -16,7 +16,7 @@ from posydon.utils.posydonwarning import Pwarn, POSYDONWarning                  
 warnings.filterwarnings('error', category=POSYDONWarning)
 
 #===== Functions for popualtion selection and extraction =====
-def Systems_selection_for_XRB(path_file_h5, filename_out):
+def Systems_selection_for_XRB(path_file_h5, filename_out, verbose=True):
     """
     Selects compact-object binaries with non-compact companions and exports the new population.
 
@@ -32,6 +32,9 @@ def Systems_selection_for_XRB(path_file_h5, filename_out):
 
     filename_out : str or list of str
         Name(s) for the file(s) that will be exported (without the extension).
+
+    verbose : bool, optional
+        If True, print detailed information about the process. Default is True.
 
     Returns
     -------
@@ -115,6 +118,9 @@ def Systems_selection_for_XRB(path_file_h5, filename_out):
 
     for fh5, fn in zip(files, filenames):
         
+        if verbose:
+            print(f"\n Processing file {fh5} in Population() ...")
+
         tmp_pop = Population(fh5)
         tmp_oneline = tmp_pop.oneline[['state_f', 'S1_state_f', 'S2_state_f', 'event_f']]
 
@@ -130,14 +136,19 @@ def Systems_selection_for_XRB(path_file_h5, filename_out):
 
         # Export the selection to the same directory as the input file
         output_path = os.path.join(os.path.dirname(fh5) or '.', f"{fn}.h5")
+
+        if verbose:
+            print(f"Exporting selected system to {output_path} ...")
+
         tmp_pop.export_selection(list(idx), output_path, overwrite=True)
         out_fn.append(output_path)
 
         del tmp_pop
 
-        print(f"File: {os.path.basename(fh5)}. Selection stored as " + "\033[1m"  
-              + f"{output_path} \n" + "\033[0m" + 6*' ' 
-              + f"Number of selected systems : {len(idx)}.")
+        if verbose:
+            print(f"Resume: {os.path.basename(fh5)}.\n" 
+                  + 8*' ' +"Selection stored as " + "\033[1m" + f"{output_path} \n" 
+                  + "\033[0m" + 8*' ' + f"Number of selected systems : {len(idx)}.")
 
 
 #===== Functions for luminosity and XLF calculations =====
@@ -321,7 +332,7 @@ def Stefan_Boltzmann_law(Luminosity, Radius):
     
     return Teff
 
-def Wind_velocity_BHL(donor_mass, donor_logR, donor_logL, Donor_log_wind_mdot, 
+def Wind_velocity_BHL(donor_mass, donor_logR, donor_logL, donor_log_wind_mdot, 
                       donor_surface_H1, donor_He_core_mass, Wind_velo_scheme ='Kudritzki+2000'):
     """
     Compute the wind velocity of the donor star in a detached binary system using either the prescription from :cite:`Hurley et al. 2002`   or :cite:`Kudritzki & Puls 2000`. 
@@ -339,7 +350,7 @@ def Wind_velocity_BHL(donor_mass, donor_logR, donor_logL, Donor_log_wind_mdot,
         Log10(Radius of the donor star) in [R⊙].
     donor_logL : array of float
         Log10(Luminosity of the donor star) in [L⊙].
-    Donor_log_wind_mdot : array of float
+    donor_log_wind_mdot : array of float
         Log10(Mass loss rate of the donor star through winds) in [M⊙/yr].
     donor_surface_H1 : array of float
         Hydrogen mass fraction at the surface of the donor star.
@@ -376,7 +387,7 @@ def Wind_velocity_BHL(donor_mass, donor_logR, donor_logL, Donor_log_wind_mdot,
     donor_mass_arr = np.asarray(donor_mass, dtype=float)
     donor_logR_arr = np.asarray(donor_logR, dtype=float)
     donor_logL_arr = np.asarray(donor_logL, dtype=float)
-    donor_log_wind_mdot_arr = np.asarray(Donor_log_wind_mdot, dtype=float)
+    donor_log_wind_mdot_arr = np.asarray(donor_log_wind_mdot, dtype=float)
     donor_surface_H1_arr = np.asarray(donor_surface_H1, dtype=float)
     donor_He_core_mass_arr = np.asarray(donor_He_core_mass, dtype=float)
 
@@ -619,7 +630,7 @@ def BHL_mdot_acc(Macc_Msun, donor_mass_Msun, accretor_type, donor_log_radius,
                 * (1 + (v_wind_i / V_orb)**2)**(-4) / gamma
             )
             if Rdisk_div_RISCO < 1.0:
-                Mdot_BHL = 0.0
+                Mdot_BHL = 1e-99 # Avoid division by 0
 
         Mdot_BHL_gps[idx] = float(Mdot_BHL)
 
@@ -736,6 +747,7 @@ def L_bolo(bin_state, lg_mtransfer_rate, acc_log_mdot, donor_log_wind_mdot, acc_
     **kwargs : dict, optional
         - high_wind_rate : str, default=None
             Check whether the donor star fills at least 80% of its Roche lobe to get winds. Option : 'HiraiMandel21' chooses >= 80% filled systems.
+        - Other optional parameters for the BHL accretion rate calculation in detached systems (passed to **BHL_mdot_acc()** and **Wind_velocity_BHL()**):
     
     Returns
     -------
@@ -817,20 +829,14 @@ def L_bolo(bin_state, lg_mtransfer_rate, acc_log_mdot, donor_log_wind_mdot, acc_
 
     # RLO
     Mdot = np.where(mask_RLO, Mdot_RLO_gps, Mdot)
+
     # Winds
-    acc_mdot_detached = np.where(np.isfinite(acc_log_mdot), 10.0**acc_log_mdot * const.Msun / const.secyer, 0.0)
-
-    is_BHL_system = mask_detached & (acc_log_mdot >=-60.0)
-
-    # If acc_log_mdot <= -60.0, then we calculate Mdot_BHL according to Bondi & Hoyle 1944
     Vwind = Wind_velocity_BHL(Mdonor, Donor_log_radius, donor_log_L, donor_log_wind_mdot, 
                               Donor_surface_H1, donor_He_core_mass, Wind_velo_scheme=Wind_velo_scheme)
     
     Mdot_BHL = BHL_mdot_acc(Macc, Mdonor, acc_state, Donor_log_radius, donor_log_wind_mdot, a_cm, ecc, Vwind, spin, **BHL_kwargs)
-
-    Mdot_detached = np.where(is_BHL_system, Mdot_BHL, acc_mdot_detached)
     
-    Mdot = np.where(mask_detached, Mdot_detached, Mdot)
+    Mdot = np.where(mask_detached, Mdot_BHL, Mdot)
 
     #===== Eddington parameters =====
     is_BH = (acc_state == 'BH')
@@ -842,11 +848,14 @@ def L_bolo(bin_state, lg_mtransfer_rate, acc_log_mdot, donor_log_wind_mdot, acc_
 
     ratio = np.zeros_like(Mdot, dtype=float)
     mask_valid = np.isfinite(Medd) & (Medd > 0.0)
-    ratio = Mdot[mask_valid] / Medd[mask_valid]
+    ratio[mask_valid] = Mdot[mask_valid] / Medd[mask_valid]
     
     #===== Luminosity calculation =====
 
     Lx_sub = Mdot * eta * const.clight**2 # Sub-Eddington case
+
+    if np.any(ratio == 0.0):
+        Lx = np.where((Mdot == 0.0) & (ratio == 0.0), 1e-54, Lx_sub) # To avoid log(0) and division by 0
 
     # Beaming
     b = np.ones_like(Mdot, dtype=float)
@@ -898,8 +907,7 @@ def XRB_selection_function(history_chunk, oneline_chunk, formation_channels_chun
         Can be either 'Hurley+2002' [[4]_] or 'Kudritzki+2000' [[5]_].
         - high_wind_rate (str, default = None) : Define a minimum threshold for filling the Roche lobe in order to obtain accretion winds. Option : 'HiraiMandel21' check ≥ 80% filled systems [[3]_].
         Passed to L_bolo function to compute the luminosity in wind-fed systems.
-        - Wind_Disk_BH_formation (bool, default = False) : Whether to check for disk formation criteria around BH accretor [[2]_]. Passed to BHL_mdot_acc function. 
-        If True, it assumes that infalling material forms a disk around the BH before being accreted, which can increase the accretion efficiency.
+        - Wind_Disk_BH_formation (bool, default = False) : Whether to check for disk formation criteria around BH accretor [[2]_].
 
     Returns
     -------
@@ -971,6 +979,7 @@ def XRB_selection_function(history_chunk, oneline_chunk, formation_channels_chun
     orbital_separation = orbital_separation_from_period(oneline_chunk['orbital_period_f'], oneline_chunk['S1_mass_f'], oneline_chunk['S2_mass_f'])
 
     Donor_RL_radius = roche_lobe_radius(oneline_chunk['S2_mass_f'].to_numpy(), oneline_chunk['S1_mass_f'].to_numpy(), orbital_separation)
+    Donor_RL_series = pd.Series(Donor_RL_radius, index=oneline_chunk.index)
 
     mask_be = ((oneline_chunk['S2_state_f'] == 'H-rich_Core_H_burning')
                 & (oneline_chunk['S2_mass_f'] >= 6.0)
@@ -987,6 +996,7 @@ def XRB_selection_function(history_chunk, oneline_chunk, formation_channels_chun
     Df_Be['metallicity'] = oneline_chunk.loc[mask_be, 'metallicity']
     Df_Be['time_f'] = oneline_chunk.loc[mask_be, 'time_f']
     Df_Be['Lx'] = Be_XRB_Lx(oneline_chunk.loc[mask_be, 'orbital_period_f'].to_numpy())
+
     if formation_channels_chunk is not None:
         Df_Be['formation_channel'] = formation_channels_chunk.loc[Df_Be.index, 'channel']
 
@@ -997,7 +1007,7 @@ def XRB_selection_function(history_chunk, oneline_chunk, formation_channels_chun
     Wind_mask = Rest_of_systems['state_f'] == 'detached'
     Wind_systems = Rest_of_systems.loc[Wind_mask].copy()
 
-
+    Rest_Donor_RL_radius = Donor_RL_series.loc[~mask_be]
 
     rows = []
 
@@ -1022,7 +1032,7 @@ def XRB_selection_function(history_chunk, oneline_chunk, formation_channels_chun
         bin_state = df['state_f']
         lg_mtransfer_rate = df['lg_mtransfer_rate_f']
         a_cm = const.Rsun * orbital_separation_from_period(df['orbital_period_f'], df['S1_mass_f'], df['S2_mass_f'])
-        Donor_RL_radius = roche_lobe_radius(Mdonor, Macc, a_cm)
+        Donor_RL_radius = Rest_Donor_RL_radius.loc[df.index].to_numpy()
         ecc = df['eccentricity_f']
 
         # If the magnteic field of the NS is available, we can compute the magnetosphere radius and thus the accretion efficiency more accurately. 
@@ -1043,7 +1053,7 @@ def XRB_selection_function(history_chunk, oneline_chunk, formation_channels_chun
         out['time'] = df['time_f']
         out['Binary_state'] = bin_state
         out['Accretor_state'] = acc_state
-        out['Accretor spin'] = spin_acc
+        out['Accretor_spin'] = spin_acc
         out['Accretor_mass'] = Macc
         out['Accretor_LogR'] = Acc_log_radius
         out['Donor_state'] = donor_state
@@ -1066,12 +1076,10 @@ def XRB_selection_function(history_chunk, oneline_chunk, formation_channels_chun
 
         rows.append(out)
 
-
-
     final_df = pd.concat(rows + [Df_Be], axis=0, ignore_index=False)
 
     keep_cols = ['metallicity', 'time',
-    'Binary_state','Accretor_state','Accretor spin','Accretor_mass','Accretor_LogR',
+    'Binary_state','Accretor_state','Accretor_spin','Accretor_mass','Accretor_LogR',
     'Donor_state','Donor_mass','Donor_LogR','Donor_Roche_lobe_LogR','Donor_LogL',
     'Donor_H1_at_surface','Donor_He_Core_mass','Accretor_LogMdot','Donor_LogWind_Mdot',
     'Orbital_separation','Eccentricity','System_type','Beaming', 'Eddington_state','Lx', 'formation_channel']
@@ -1083,7 +1091,7 @@ def XRB_selection_function(history_chunk, oneline_chunk, formation_channels_chun
 
 #===== Plotting functions -Cumulative XLF ===== 
 
-#* Checked and DocString updated
+# Not needed as calculate_model_weights() function already applies the IMF-based normalization correction to the weights of the systems in the population.
 def Compute_IMF_normalization_correction(Population, m_min = 0.01, m_max = 200.0):
     """
     Compute the IMF-based normalization correction factor used to relate
@@ -1173,7 +1181,7 @@ def Compute_IMF_normalization_correction(Population, m_min = 0.01, m_max = 200.0
 
     return float(normalization)
 
-#* Checked and DocString updated
+
 def Stat_XLF(transient_population, Lmin=1e30, SFR = 1.0, stat_kwargs=None):
     """
     Compute statistics for a given transient population of XRBs, including the weigthed cumulative number of XRBs above a given luminosity.
@@ -1255,9 +1263,6 @@ def Stat_XLF(transient_population, Lmin=1e30, SFR = 1.0, stat_kwargs=None):
             Pop_params[key] = value
 
 
-    # Correction factor from 
-    #IMF_corr = Compute_IMF_normalization_correction(transient_population)
-
     T_window_yr = Pop_params['max_simulation_time'] # Years
     Tot_underlying_mass = SFR * T_window_yr  # Total underlying mass in M⊙
 
@@ -1275,7 +1280,7 @@ def Stat_XLF(transient_population, Lmin=1e30, SFR = 1.0, stat_kwargs=None):
     
     Weights = weights_series * Tot_underlying_mass
 
-    return Weights #, IMF_corr
+    return Weights
 
 
 def plot_ccdf(transient_population, ax, weights, mask, label, SFR = 1.0, **ccdf_kwargs):
@@ -1306,7 +1311,7 @@ def plot_ccdf(transient_population, ax, weights, mask, label, SFR = 1.0, **ccdf_
         - norm_factor (float, default=0.5) : Normalization factor L_x/L_bolo ~ 0.5 from Misra et al.[1] page 4
         - extend_to_edges (bool, default=True) : Whether to extend the CCDF to the edges of the plot.
     
-        Any other keyword arguments valid for `matplotlib.pyplot.plot` can be passed.
+        Any other keyword arguments valid for `matplotlib.pyplot` can be passed.
 
     Returns
     -------
@@ -1343,7 +1348,7 @@ def plot_ccdf(transient_population, ax, weights, mask, label, SFR = 1.0, **ccdf_
     if norm_factor <= 0.0:
         raise ValueError("plot_ccdf: norm_factor must be > 0.0")
 
-    L = transient_population.population['Lx'].to_numpy(dtype = float) * norm_factor
+    L = np.log10(transient_population.population['Lx'].to_numpy(dtype = float) * norm_factor)
 
     T_window_yr = transient_population.ini_params.get('max_simulation_time', 1e8) # Years
     Total_underlying_mass = SFR * T_window_yr  # Total underlying mass in M⊙
@@ -1354,7 +1359,7 @@ def plot_ccdf(transient_population, ax, weights, mask, label, SFR = 1.0, **ccdf_
     b = transient_population.population['Beaming'].to_numpy(dtype = float)
     b = np.where(np.isfinite(b) & (b > 0.0), b, 1.0)
 
-    selection = mask & np.isfinite(L) & (L >= 1e30)
+    selection = mask & np.isfinite(L) & (L >= 35)
 
     if not np.any(selection):
         return
@@ -1381,7 +1386,7 @@ def plot_ccdf(transient_population, ax, weights, mask, label, SFR = 1.0, **ccdf_
         else:
             ymin = cur_ylim[0]
 
-    # Valeur totale au-dessus du plus petit L
+    # Total vlaue above the smallest L
         y0 = float(np.sum(Weights_sorted))
 
         x_ext = np.r_[xmin, L_sorted, xmax]
@@ -1429,13 +1434,13 @@ def Plot_cumulative_XLF(transient_population, weights, SFR = 1.0, **plot_kwargs)
     - norm_factor (float, default=0.5) : Normalization factor L_x/L_bolo ~ 0.5 from Misra et al. [[1]_], page 4
     - extend_to_edges (bool, default=True) : Whether to extend the CCDF to the edges of the plot.
     
-    Any other keyword arguments valid for `matplotlib.pyplot.plot` can be passed and will be forwarded to the plot_ccdf function.
+    Any other keyword arguments valid for `matplotlib.pyplot` can be passed and will be forwarded to the plot_ccdf function.
     """
 
     met = transient_population.population['metallicity'][0] if 'metallicity' in transient_population.population.columns else None
     title = f"{title} (Z={met:.2e} $Z_{{\odot}}$)" if title and met is not None else title
 
-    Lumino_range = (transient_population.population['Lx'] >= 1e35) & (transient_population.population['Lx'] <= 1e43)
+    Lumino_range = (np.log10(transient_population.population['Lx'] * 0.5) >= 35) & (np.log10(transient_population.population['Lx'] * 0.5) <= 43)
     RLO = transient_population.population['System_type'] == 'RLO'
     Be_XRB = transient_population.population['Binary_state'] == 'Be system' 
     Wind = transient_population.population['System_type'] == 'Wind'
@@ -1467,9 +1472,9 @@ def Plot_cumulative_XLF(transient_population, weights, SFR = 1.0, **plot_kwargs)
     ax.set_ylabel(r'N($> L_{X,[0.5--8 keV]}$) / (M$_\odot$ yr$^{-1}$)')
     ax.set_xlim(1e35, 1e43)
     ax.set_ylim(2e-4, 4e3)
-    legend = ax.legend(loc='lower center', bbox_to_anchor=(0.5, 1.02), bbox_transform=ax.transAxes, 
+    ax.legend(loc='lower center', bbox_to_anchor=(0.5, 1.02), bbox_transform=ax.transAxes, 
                        ncol=5, frameon=True, fancybox=True, edgecolor='k', handlelength=1.5, borderpad=0.4, fontsize=6)
-    fig.subplots_adjust(top=0.82)  # ajuster l'espace supérieur pour la légende
+    fig.subplots_adjust(top=0.82)  # Ajust the top margin to make room for the legend
 
     plt.show()
 
