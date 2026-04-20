@@ -1,4 +1,4 @@
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 
 __author__ = "Arnaud Aguet <arnaud.aguet@etu.unige.ch>"
 
@@ -710,7 +710,7 @@ def Be_XRB_Lx(period, filtered = True):
     """
 
     if not filtered: 
-        Pwarn(f"Be_XRB_Lx: Population not filtered for Be systems. Returning Lx = 0.0 for all systems (PID={os.getpid()}).", category="InappropriateValueWarning", stacklevel=2)
+        Pwarn(f"Be_XRB_Lx: Population not filtered for Be systems. Returning Lx = 0.0 for all systems.", category="InappropriateValueWarning", stacklevel=2)
         Lx = np.zeros_like(period, dtype=float)
         return Lx
     # [2] Equation 11
@@ -718,11 +718,11 @@ def Be_XRB_Lx(period, filtered = True):
 
     return Lx
 
-def Luminosity_GRRMHD_systems(Accretor_LogMdot, Mdot_Edd, L_edd):
+def Luminosity_GRRMHD_systems(Accretor_LogMdot, Mdot_Edd, L_edd, spin):
     """
     Calculate the luminosity of Black holes accreting material through Roche lobe overflow.
 
-    The population must have been simulated by using General Relativistic Radiative MagnetoHydroDynamic (GRRMHD) grids (`step_BH_HMS_RLO` and `step_NS_HMS_RLO`).
+    The population must have been simulated by using General Relativistic Radiative Magneto-HydroDynamic (GRRMHD) grids (`step_BH_HMS_RLO` and `step_NS_HMS_RLO`).
 
     Parameters
     ----------
@@ -732,13 +732,18 @@ def Luminosity_GRRMHD_systems(Accretor_LogMdot, Mdot_Edd, L_edd):
         Eddington mass accretion rate in grams per second (g/s).
     L_edd : array-like
         Eddington luminosity in erg/s.
-    
+    spin : array-like
+        Dimensionless spin parameter of the black hole.
+
     Returns
     -------
     L_obs : pandas Series
         Observed luminosity in erg/s, accounting for GRRMHD effects and random viewing angles.
     b : pandas Series
         Beaming factor due to GRRMHD effects, as a function of the random viewing angle.
+    Weight_times_beaming : bool
+        A flag indicating whether the weights of the systems should be multiplied by the beaming factor when plotting the cumulative luminosity function (CCDF). 
+        For GRRMHD systems, this is set to False because the luminosity already includes the beaming factor, so we do not need to multiply by it again in `plot_ccdf()`.
     """
     from scipy.interpolate import CubicSpline
 
@@ -771,15 +776,24 @@ def Luminosity_GRRMHD_systems(Accretor_LogMdot, Mdot_Edd, L_edd):
     Mdot_acc = Acc_Mdot_gps / Mdot_Edd # In Eddingtion units
     
     #===== Radiative and observed luminosity =====
-    L_rad = 0.07 * Mdot_acc**(1.19) # In Eddington luminosity units
+    Spin = np.asarray(spin, dtype=float)
+    #Spin = np.where(Spin > 0.45, 0.9, 0.0)
 
-    angle = pd.Series(np.random.uniform(0, np.pi / 2, size=len(Mdot_acc))) # Random angle between 0 and pi/2 for each system
+    #L_rad = np.where(Spin == 0.0, 0.07 * Mdot_acc**(1.19), 0.11 * Mdot_acc**(1.43)) # In Eddington luminosity units
 
-    b = pd.Series(cs(angle)) # Beaming factor
-    
+    L_rad = 0.07 * Mdot_acc**(1.19)
+
+    cos_angle = np.random.uniform(0, 1, size=len(Mdot_acc)) # Random viewing cosine angle between 0 and 1
+    theta = np.arccos(cos_angle) # Viewing angle [rad]
+
+    b = pd.Series(cs(theta)) # Beaming factor
+
+    # The lumiosity already includes the beaming factor, so we do not need to multiply by it again in plot_ccdf()
+    Weight_times_beaming = False 
+
     L_obs = L_rad * L_edd * b # erg/s
 
-    return L_obs, b
+    return L_obs, b, Weight_times_beaming
 
 def L_bolo(used_grid, bin_state, lg_mtransfer_rate, acc_log_mdot, donor_log_wind_mdot, acc_state, donor_log_L, 
            Macc, Mdonor, Acc_log_radius, Donor_log_radius, Donor_surface_H1, donor_He_core_mass, 
@@ -836,16 +850,19 @@ def L_bolo(used_grid, bin_state, lg_mtransfer_rate, acc_log_mdot, donor_log_wind
     spin : array of float
         Spin of the accretor (dimensionless).
     **kwargs : dict, optional
-        - high_wind_rate : str, default=None
+        - high_filling_RL : str, default=None
             Check whether the donor star fills at least 80% of its Roche lobe to get winds. Option : 'HiraiMandel21' chooses >= 80% filled systems.
     
     Returns
     -------
     Tuple of arrays
-        Lx, Edd_state, beaming
+        Lx, Edd_state, beaming, Weight_times_beaming
         - Lx: X-ray luminosity of the system in [erg/s].
         - Edd_state: 'Sub-Eddington' or 'Super-Eddington' depending on whether the accretion rate is below or above the Eddington limit.
         - beaming: Beaming factor (b) applied to the luminosity in the super-Eddington regime, dimensionless.
+        - Weight_times_beaming: A flag indicating whether the weights of the systems should be multiplied by the beaming factor when plotting the cumulative luminosity function (CCDF). 
+        For GRRMHD systems, this is set to False because the luminosity already includes the beaming factor, so we do not need to multiply by it again in `plot_ccdf()`. 
+        For classical systems, this is set to True because the luminosity does not include the beaming factor, so we need to multiply by it in `plot_ccdf()`.
 
     References
     ----------
@@ -869,14 +886,14 @@ def L_bolo(used_grid, bin_state, lg_mtransfer_rate, acc_log_mdot, donor_log_wind
     """
 
     #===== Optional parameters =====
-    allowed_keys = {'high_wind_rate', 'alpha_BHL', 'Wind_Disk_BH_formation', 'Wind_velo_scheme'}
+    allowed_keys = {'high_filling_RL', 'alpha_BHL', 'Wind_Disk_BH_formation', 'Wind_velo_scheme'}
     unknown = sorted(set(kwargs.keys()) - allowed_keys)
     if unknown:
             Pwarn(f"L_bolo(): unknown parameter(s): {unknown} (PID={os.getpid()})", category="InappropriateValueWarning")
 
-    high_wind_rate = kwargs.get('high_wind_rate', None)
-    if high_wind_rate not in [None, 'HiraiMandel21']:
-        Pwarn(f"high_wind_rate '{high_wind_rate}' not recognized. Choose 'HiraiMandel21' or None. (PID={os.getpid()}).", category="InappropriateValueWarning")
+    high_filling_RL = kwargs.get('high_filling_RL', None)
+    if high_filling_RL not in [None, 'HiraiMandel21']:
+        Pwarn(f"high_filling_RL '{high_filling_RL}' not recognized. Choose 'HiraiMandel21' or None. (PID={os.getpid()}).", category="InappropriateValueWarning")
 
     # Passed to BHL_mdot_acc function
     BHL_kwargs = {key: kwargs[key] for key in ['alpha_BHL', 'Wind_Disk_BH_formation'] if key in kwargs}
@@ -914,15 +931,21 @@ def L_bolo(used_grid, bin_state, lg_mtransfer_rate, acc_log_mdot, donor_log_wind
     is_BH = (acc_state == 'BH')
     is_NS = (acc_state == 'NS')
 
+    # Whether to multiply the weights of the systems by the beaming factor when plotting the cumulative luminosity function (CCDF).
+    Weight_times_beaming = np.full_like(bin_state, True, dtype=bool)
+
     #===== Eddington parameters =====
     eta_ns, _ = NS_efficiency(Macc, Acc_log_radius, B_surf=B_surf, accretor_logMdot=acc_log_mdot)
     eta_bh, _ = BH_efficiency(spin)
     eta = np.where(is_BH, eta_bh, eta_ns)
 
     Medd, L_edd = Eddington_limit(Macc, Donor_surface_H1, eta)
+    mask_valid = np.isfinite(Medd) & (Medd > 0.0)
 
     Mdot = np.full_like(eta, np.nan, dtype=float)
     b = np.ones_like(Mdot, dtype=float)
+
+    ratio = np.zeros_like(Mdot, dtype=float)
 
     #===== Wind calculation for detached systems =====
     Vwind = Wind_velocity_BHL(Mdonor, Donor_log_radius, donor_log_L, donor_lgmdot_wind, 
@@ -942,8 +965,6 @@ def L_bolo(used_grid, bin_state, lg_mtransfer_rate, acc_log_mdot, donor_log_wind
         # RLO
         Mdot = np.where(mask_RLO, Mdot_RLO_gps, Mdot)
 
-        ratio = np.zeros_like(Mdot, dtype=float)
-        mask_valid = np.isfinite(Medd) & (Medd > 0.0)
         ratio[mask_valid] = Mdot[mask_valid] / Medd[mask_valid]
     
         #===== Luminosity calculation =====
@@ -963,17 +984,22 @@ def L_bolo(used_grid, bin_state, lg_mtransfer_rate, acc_log_mdot, donor_log_wind
         Edd_state = np.where(ratio <= 1.0, 'Sub-Eddington', 'Super-Eddington')
         beaming = b
 
-    else: # GRRMHD grid for RLO-BH systems
+    else: # GRRMHD grid for RLO systems
 
         # RLO (NS + BH fallback, BH overwritten below by GRRMHD prescription)
         Mdot = np.where(mask_RLO, 10**acc_log_mdot * const.Msun / const.secyer, Mdot)
 
+        ratio[mask_valid] = Mdot[mask_valid] / Medd[mask_valid]
+
+        is_Super_Edd = ratio >1.0
+        is_RLO_BH = mask_RLO & is_BH & is_Super_Edd # For GRRMHD systems RLO-BH systems only
+
         # For RLO-NS systems, Wind-BH/NS systems
         Lx = eta * Mdot * const.clight**2
 
-        is_RLO_BH = mask_RLO & is_BH # For GRRMHD systems RLO-BH systems only
         if np.any(is_RLO_BH):
-            Lx_RLO_BH, b_RLO_BH = Luminosity_GRRMHD_systems(acc_log_mdot[is_RLO_BH], Mdot_Edd = Medd[is_RLO_BH], L_edd = L_edd[is_RLO_BH])            
+            Lx_RLO_BH, b_RLO_BH, W_x_b = Luminosity_GRRMHD_systems(acc_log_mdot[is_RLO_BH], Mdot_Edd = Medd[is_RLO_BH], L_edd = L_edd[is_RLO_BH], spin = spin[is_RLO_BH])            
+            Weight_times_beaming[is_RLO_BH] = W_x_b          
             b[is_RLO_BH] = np.asarray(b_RLO_BH)            
             Lx[is_RLO_BH] = np.asarray(Lx_RLO_BH)                
             
@@ -984,12 +1010,12 @@ def L_bolo(used_grid, bin_state, lg_mtransfer_rate, acc_log_mdot, donor_log_wind
         beaming = b
         
     # [1] Hirai & Mandel 2021
-    if (high_wind_rate == 'HiraiMandel21'):
+    if (high_filling_RL == 'HiraiMandel21'):
         mask_hirai = (10**Donor_log_radius / Donor_RL_radius < 0.8) & (bin_state == 'detached') & (acc_state == 'BH')
         Lx = np.where(mask_hirai, 10**(-54), Lx)
     
 
-    return Lx, Edd_state, beaming
+    return Lx, Edd_state, beaming, Weight_times_beaming
 
 # Selection function to be passed to create_transient_population method
 def XRB_selection_function(history_chunk, oneline_chunk, formation_channels_chunk, **kwargs):
@@ -997,10 +1023,13 @@ def XRB_selection_function(history_chunk, oneline_chunk, formation_channels_chun
     A X-ray binary selection function to create a population of XRBs, where we store some important information (Only valid for **Population class** object).
 
     This function identifies X-ray binaries as an accretor and a donor star and returns their properties.
-    Requires to have been through the System_selection() function to only have BH-star or NS-star systems to gain time.
-    The function will also compute the X-ray luminosity of each selected binary system using the **L_bolo()** function and **Be_XRB_Lx()** function for Be systems.
+    Requires to have been through the System_selection_for_XRB() function to only have BH-star or NS-star systems.
+    The function will also compute the X-ray luminosity of each selected binary system using the **L_bolo()** function 
+    and **Be_XRB_Lx()** function for Be systems. L_bolo() function further splits the calculation according to the grid used for the simulations (classical or GRRMHD) 
+    and the binary state (RLO or detached).
 
-    This function has to be passed to **Population_name.create_transient_population(XRB_selection_function,'Transient_population_name')** method to create a population of XRBs from a binary population synthesis simulation.
+    This function has to be passed to **Population_name.create_transient_population(XRB_selection_function,'Transient_population_name')** method 
+    to create a population of XRBs from a binary population synthesis simulation.
 
     
     Parameters
@@ -1017,8 +1046,10 @@ def XRB_selection_function(history_chunk, oneline_chunk, formation_channels_chun
         - alpha_BHL (float, default = 1.5) : efficiency parameter for Bondi-Hoyle-Lyttleton accretion.
         - Wind_velo_scheme (str, default = 'Hurley+2002') : Wind velocity scheme to use in Wind_velocity_BHL function. 
         Can be either 'Hurley+2002' _[[4]] or 'Kudritzki+2000' _[[5]].
-        - high_wind_rate (str, default = None) : Define a minimum threshold for filling the Roche lobe in order to obtain accretion winds. Option : 'HiraiMandel21' check ≥ 80% filled systems _[[3].
+        - high_filling_RL (str, default = None) : Define a minimum threshold for filling the Roche lobe in order to obtain accretion winds. Option : 'HiraiMandel21' check ≥ 80% filled systems _[[3].
         - Wind_Disk_BH_formation (bool, default = False) : Whether to check for disk formation criteria around BH accretor _[[2]].
+        - used_grid (str, default = 'classical') : Whether simulations have been performed using GRRMHD grids for RLO-BH systems or with classical grids. 
+        It can be either 'GRRMHD' or 'classical'.
 
     Returns
     -------
@@ -1088,7 +1119,7 @@ def XRB_selection_function(history_chunk, oneline_chunk, formation_channels_chun
             formation_channels_chunk = formation_channels_chunk.copy()
 
     #===== Kwargs control =====
-    allowed_keys = {'alpha_BHL', 'Wind_velo_scheme', 'high_wind_rate', 'Wind_Disk_BH_formation', 'used_grid'}
+    allowed_keys = {'alpha_BHL', 'Wind_velo_scheme', 'high_filling_RL', 'Wind_Disk_BH_formation', 'used_grid'}
     unknown = sorted(set(kwargs.keys()) - allowed_keys)
     if unknown:
         Pwarn(f"XRB_selection_function: unknown parameter(s): {unknown} (PID={os.getpid()})."
@@ -1107,7 +1138,7 @@ def XRB_selection_function(history_chunk, oneline_chunk, formation_channels_chun
     mask_be = ((oneline_chunk['S2_state_f'] == 'H-rich_Core_H_burning')
                 & (oneline_chunk['S2_mass_f'] >= 6.0)
                 & (oneline_chunk['state_f'] == 'detached')
-                &  (oneline_chunk['S2_surf_avg_omega_div_omega_crit_f'] >= 0.7)
+                & (oneline_chunk['S2_surf_avg_omega_div_omega_crit_f'] >= 0.7)
                 & (oneline_chunk['orbital_period_f'] >= 10.0)
                 & (oneline_chunk['orbital_period_f'] <= 300.0)
                 & (Donor_RL_radius <= (100.0 * 10**(oneline_chunk['S2_log_R_f'])))
@@ -1125,6 +1156,13 @@ def XRB_selection_function(history_chunk, oneline_chunk, formation_channels_chun
 
     Df_Be['Donor_Roche_Lobe_radius'] = Donor_RL_series.loc[Df_Be.index].to_numpy()
     
+    Final_state = Df_Be['S1_state_f']
+    is_S1_compact = Final_state.isin(['NS', 'BH'])
+
+    Df_Be['Accretor_state'] = np.where(is_S1_compact, Df_Be['S1_state_f'], Df_Be['S2_state_f'])
+    Df_Be['Donor_state'] = np.where(is_S1_compact, Df_Be['S2_state_f'], Df_Be['S1_state_f'])
+    Df_Be['Weight_x_beaming'] = True
+
     #===== RLO / Winds systems =====
     Rest_of_systems = oneline_chunk.loc[~mask_be].copy()
     RLO_mask = Rest_of_systems['state_f'].isin(['RLO1', 'RLO2'])
@@ -1165,7 +1203,7 @@ def XRB_selection_function(history_chunk, oneline_chunk, formation_channels_chun
         # But if it becomes available, it can be added to the input dataframe and this part of the code can be updated.
         B_surface = None 
 
-        Lx, Edd_state, beaming = L_bolo(
+        Lx, Edd_state, beaming, Weight_times_beaming = L_bolo(
             used_grid, bin_state, lg_mtransfer_rate, acc_log_mdot, donor_log_wind_mdot, acc_state,
             Donor_log_lum, Macc, Mdonor, Acc_log_radius, Donor_log_radius,
             Donor_surface_H1, donor_He_core_mass, Donor_RL_radius, a_cm, ecc, spin_acc, B_surface,
@@ -1196,6 +1234,7 @@ def XRB_selection_function(history_chunk, oneline_chunk, formation_channels_chun
         out['System_type'] = name
         out['Eddington_state'] = Edd_state
         out['Beaming'] = beaming
+        out['Weight_x_beaming'] = Weight_times_beaming
         out['Lx'] = Lx
         if formation_channels_chunk is not None:
             out['formation_channel'] = formation_channels_chunk.loc[df.index, 'channel']
@@ -1208,7 +1247,7 @@ def XRB_selection_function(history_chunk, oneline_chunk, formation_channels_chun
     'Binary_state','Accretor_state','Accretor_spin','Accretor_mass','Accretor_LogR',
     'Donor_state','Donor_mass','Donor_LogR','Donor_Roche_lobe_radius','Donor_LogL',
     'Donor_H1_at_surface','Donor_He_Core_mass','Accretor_LogMdot','Donor_LogMdot_wind',
-    'Orbital_separation','Eccentricity','System_type','Beaming', 'Eddington_state','Lx', 'formation_channel']
+    'Orbital_separation','Eccentricity','System_type','Beaming', 'Weight_x_beaming', 'Eddington_state','Lx', 'formation_channel']
 
     final_df = final_df[keep_cols].copy()
 
@@ -1390,7 +1429,10 @@ def Stat_XLF(transient_population, Lmin=1e30, SFR = 1.0, stat_kwargs=None):
 
 
     T_window_yr = Pop_params['max_simulation_time'] # Years
-    Tot_underlying_mass = SFR * T_window_yr  # Total underlying mass in M⊙
+    Total_underlying_mass = SFR * T_window_yr  # Total underlying mass in M⊙
+
+    if Total_underlying_mass <= 0.0:
+        raise ValueError("plot_ccdf: Total_underlying_mass must be > 0.0")
 
     base_w = transient_population.calculate_model_weights(model_weights_identifier="base_IMF",
                                                           population_parameters=Pop_params)
@@ -1404,7 +1446,7 @@ def Stat_XLF(transient_population, Lmin=1e30, SFR = 1.0, stat_kwargs=None):
     else:
         weights_series = np.asarray(base_w, float)  # assume Series-like
     
-    Weights = weights_series * Tot_underlying_mass
+    Weights = weights_series * Total_underlying_mass
 
     return Weights
 
@@ -1474,13 +1516,10 @@ def plot_ccdf(transient_population, ax, weights, mask, label, SFR = 1.0, **ccdf_
     if norm_factor <= 0.0:
         raise ValueError("plot_ccdf: norm_factor must be > 0.0")
 
+    # True if we need to multiply by the beaming factor b, False if the weight already includes beaming.
+    W_x_b = transient_population.population['Weight_x_beaming'].to_numpy(dtype = bool)
+
     L = np.log10(transient_population.population['Lx'].to_numpy(dtype = float) * norm_factor)
-
-    T_window_yr = transient_population.ini_params.get('max_simulation_time', 1e8) # Years
-    Total_underlying_mass = SFR * T_window_yr  # Total underlying mass in M⊙
-
-    if Total_underlying_mass <= 0.0:
-        raise ValueError("plot_ccdf: Total_underlying_mass must be > 0.0")
 
     b = transient_population.population['Beaming'].to_numpy(dtype = float)
     b = np.where(np.isfinite(b) & (b > 0.0), b, 1.0)
@@ -1491,7 +1530,8 @@ def plot_ccdf(transient_population, ax, weights, mask, label, SFR = 1.0, **ccdf_
         return
 
     L_selec = L[selection]
-    Weight_select = weights[selection] * b[selection]
+    # If we need to multiply by the beaming factor, we do it here, Otherwise, we assume that the weight already includes beaming (GRRMHD BH-RLO systems only).
+    Weight_select = weights[selection] * np.where(W_x_b[selection], b[selection], 1.0)
 
     order = np.argsort(L_selec)
     L_sorted = L_selec[order]
