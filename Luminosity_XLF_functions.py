@@ -220,16 +220,16 @@ def BH_efficiency(Spin):
     Parameters
     ---------- 
     Spin : float
-        Spin of the black hole. Can be given as dimensionless spin "*a**" [c*J/(GM^2)] or dimensional spin "*a*" [J/M].
+        Spin of the black hole. Must be given as dimensionless spin "*a**" [c*J/(GM^2)].
         Its value can be given either positively (prograde accretion) or negatively (retrograde accretion) 
         (Spin  ∈ [-0.998, 0.998] with ± 0.998 being the Thorne limit).
 
     Returns
     -------
     tuple
-        A tuple with two floats: (eta, r_tilde).
+        A tuple with two floats: (eta, r_ISCO).
         - eta (float): Radiative efficiency of the Kerr black hole, dimensionless.
-        - r_tilde (float): Radius of the ISCO in units of GM / c^2.
+        - r_ISCO (float): Radius of the ISCO in units of GM / c^2.
 
     References
     ----------
@@ -251,15 +251,15 @@ def BH_efficiency(Spin):
     Z2 = np.sqrt(3 * a_star**2 + Z1**2)
 
     # Radius at the innermost stable circular orbit (ISCO)
-    r_tilde = 3 + Z2 - sign * np.sqrt((3 - Z1)*(3 + Z1 + 2 * Z2)) # Dimensionless
+    r_ISCO = 3 + Z2 - sign * np.sqrt((3 - Z1)*(3 + Z1 + 2 * Z2)) # Dimensionless
 
     # Energy at ISCO in units of mc^2 (i.e E_ISCO < 1, E = 1 means particle energy at infinity)
-    E_ISCO = (r_tilde**(3/2) - 2 * r_tilde**(1/2) + a_star)/(r_tilde**(3/4) * np.sqrt(r_tilde**(3/2) - 3 * r_tilde**(1/2) + 2 * a_star))
+    E_ISCO = (r_ISCO**(3/2) - 2 * r_ISCO**(1/2) + a_star)/(r_ISCO**(3/4) * np.sqrt(r_ISCO**(3/2) - 3 * r_ISCO**(1/2) + 2 * a_star))
     
     # Radiative efficiency
     eta = 1 - E_ISCO
 
-    return eta, r_tilde
+    return eta, r_ISCO
 
 def NS_efficiency(Mass,log_radius, B_surf=None, accretor_logMdot=None):
     """
@@ -272,7 +272,7 @@ def NS_efficiency(Mass,log_radius, B_surf=None, accretor_logMdot=None):
 
     Parameters
     ----------
-    mass : float
+    Mass : float
         Mass of the neutron star in [M⊙]
     log_radius : float
         Log10(Radius of the neutron star) in [R⊙]
@@ -352,7 +352,7 @@ def Stefan_Boltzmann_law(Luminosity, Radius):
 
     #===== Check inputs =====
     if Luminosity <= 0.0 or Radius <= 0.0:
-        Pwarn(f"Warning: Luminosity and Radius must be positive in L⊙ and R⊙ (PID={os.getpid()}). Returning NaN for Teff.",
+        Pwarn(f"Warning: Luminosity and Radius must be positive in L⊙ and R⊙. Returning NaN for Teff.",
               category="InappropriateValueWarning")
         return np.nan
     
@@ -393,7 +393,7 @@ def Wind_velocity_BHL(donor_mass, donor_logR, donor_logL, donor_log_wind_mdot,
     Returns
     -------
     V_wind_out : array of float
-        Wind velocity [cm/s]
+        Wind velocity [cm/s].
 
     Raises
     ------
@@ -409,7 +409,8 @@ def Wind_velocity_BHL(donor_mass, donor_logR, donor_logL, donor_log_wind_mdot,
     """
 
     if Wind_velo_scheme not in ['Hurley+2002', 'Kudritzki+2000']:
-        Pwarn(f"Wind_velo_scheme '{Wind_velo_scheme}' not recognized. Choose 'Hurley+2002' or 'Kudritzki+2000'. (PID={os.getpid()}).", category="InappropriateValueWarning")
+        Pwarn(f"Wind_velo_scheme '{Wind_velo_scheme}' not recognized. Choose 'Hurley+2002' or 'Kudritzki+2000'.", 
+              category="InappropriateValueWarning")
         return np.full_like(donor_mass, np.nan, dtype=float)
 
     #===== Loading arrays =====
@@ -427,7 +428,7 @@ def Wind_velocity_BHL(donor_mass, donor_logR, donor_logL, donor_log_wind_mdot,
 
     # If shapes mismatch or scalars are mixed with arrays, warn and bail out
     if (any_scalar and shapes_non_scalar) or len(shapes_non_scalar) > 1:
-        Pwarn(f"Wind_velocity_BHL: shape mismatch in inputs: {[arr.shape for arr in arrays]} (PID={os.getpid()}). Returning NaN.",
+        Pwarn(f"Wind_velocity_BHL: shape mismatch in inputs: {[arr.shape for arr in arrays]}. Returning NaN.",
               category="InappropriateValueWarning")
         if shapes_non_scalar:
             shape = next(iter(shapes_non_scalar))
@@ -538,7 +539,9 @@ def BHL_mdot_acc(Macc_Msun, donor_mass_Msun, accretor_type, donor_log_radius,
     .. [1] Bondi, H., & Hoyle, F. 1944, MNRAS, 104, 273
     .. [2] Frank, J., King, A., & Raine, D. (2002). "Accretion Power in Astrophysics: Third Edition" Chapter 4.9 pages 73-74.
            *Cambridge University Press*. https://doi.org/10.1017/CBO9781139164417
-    .. [3] Sen, K. ,Xu, X. -T., Langer, N., El Mellah, I. , Schurmann, C., Quast, M., 2021, A&A,
+    .. [3] Sen, K. ,Xu, X. -T., Langer, N., El Mellah, I. , Schurmann, C., Quast, M., 2021, 
+           *X-ray emission from BH+O star in binaries expected to descend from the observed galactic WR+O binaries*,
+           A&A 652, A138 (2021). https://doi.org/10.1051/0004-6361/202141214
            Equation 10
     .. [4] Bambi, C., Malafarina, D., & Tsukamoto, N. (2014).
             "Note on the radiation emitted by a thin accretion disk around a rotating compact object."
@@ -629,19 +632,19 @@ def BHL_mdot_acc(Macc_Msun, donor_mass_Msun, accretor_type, donor_log_radius,
         if v_wind_i == 0.0:
             frac = 1.0
             Pwarn(
-                f"Warning: Wind velocity is zero, setting accretion fraction to 1.0 (PID={os.getpid()})",
+                f"Warning: Wind velocity is zero, setting accretion fraction to 1.0.",
                 category="InappropriateValueWarning",
             )
         elif V_rel == 0.0:
             frac = 0.0
             Pwarn(
-                f"Warning: Orbital velocity is zero, setting BHL accretion rate to 0.0 g/s (PID={os.getpid()})",
+                f"Warning: Orbital velocity is zero, setting BHL accretion rate to 0.0 g/s.",
                 category="InappropriateValueWarning",
             )
         elif R == 0.0:
             frac = 0.0
             Pwarn(
-                f"Warning: Orbital separation is zero, setting BHL accretion rate to 0.0 g/s (PID={os.getpid()})",
+                f"Warning: Orbital separation is zero, setting BHL accretion rate to 0.0 g/s.",
                 category="InappropriateValueWarning",
             )
         else:
@@ -652,10 +655,10 @@ def BHL_mdot_acc(Macc_Msun, donor_mass_Msun, accretor_type, donor_log_radius,
         # From [3], check if an accretion disk can form around the BH accretor
         if wind_disk_BH and acc_type_i == 'BH':
             eta_bh, r_ISCO_bh = BH_efficiency(spin_i)
-            gamma = r_ISCO_bh / (6.0 * const.standard_cgrav * Macc_cgs / const.clight**2) # From [4]
+            gamma = r_ISCO_bh / 6.0 # From [4]
             q = Mdon_cgs / Macc_cgs
             Rdisk_div_RISCO = (
-                (2/3) * (eta_bh / (1 + q))**2 * (V_orb / (const.clight * 0.01))**(-2)
+                (2/3) * (eta_bh / (1 + q))**2 * (V_orb / const.clight)**(-2)
                 * (1 + (v_wind_i / V_orb)**2)**(-4) / gamma
             )
             if Rdisk_div_RISCO < 1.0:
@@ -710,7 +713,8 @@ def Be_XRB_Lx(period, filtered = True):
     """
 
     if not filtered: 
-        Pwarn(f"Be_XRB_Lx: Population not filtered for Be systems. Returning Lx = 0.0 for all systems.", category="InappropriateValueWarning", stacklevel=2)
+        Pwarn(f"Be_XRB_Lx: Population not filtered for Be systems. Returning Lx = 0.0 for all systems.", 
+              category="InappropriateValueWarning", stacklevel=2)
         Lx = np.zeros_like(period, dtype=float)
         return Lx
     # [2] Equation 11
@@ -718,7 +722,7 @@ def Be_XRB_Lx(period, filtered = True):
 
     return Lx
 
-def Luminosity_GRRMHD_systems(Accretor_LogMdot, Mdot_Edd, L_edd, spin):
+def Luminosity_GRRMHD_systems(Accretor_LogMdot, spin, Mdot_Edd, L_edd, spin_split = 0.75):
     """
     Calculate the luminosity of Black holes accreting material through Roche lobe overflow.
 
@@ -728,13 +732,16 @@ def Luminosity_GRRMHD_systems(Accretor_LogMdot, Mdot_Edd, L_edd, spin):
     ----------
     Accretor_LogMdot : array-like
         Logarithm (base 10) of the mass accretion rate in units of solar masses per year (Msun/yr).
+    spin : array-like
+        Dimensionless spin parameter of the black hole.
     Mdot_Edd : array-like
         Eddington mass accretion rate in grams per second (g/s).
     L_edd : array-like
         Eddington luminosity in erg/s.
-    spin : array-like
-        Dimensionless spin parameter of the black hole.
-
+    spin_split : float, optional
+        Spin value to distinguish between low-spin and high-spin black holes for the luminosity calculation.
+        It should be between 0.0 and 0.9. Default is 0.75.
+    
     Returns
     -------
     L_obs : pandas Series
@@ -744,29 +751,56 @@ def Luminosity_GRRMHD_systems(Accretor_LogMdot, Mdot_Edd, L_edd, spin):
     Weight_times_beaming : bool
         A flag indicating whether the weights of the systems should be multiplied by the beaming factor when plotting the cumulative luminosity function (CCDF). 
         For GRRMHD systems, this is set to False because the luminosity already includes the beaming factor, so we do not need to multiply by it again in `plot_ccdf()`.
+    
+    References
+    ----------
+    .. [1] Tom M. Kwan, Dai Lixin, Zepei Xing, Tao Ji, Tassos Fragos, M. Middleton
+           *Strongly magnetized super-Eddington acretion flow  around black holes I: Effects of the black hole mass, spin and mass accretion rate*
+           In preparation, 2026
+
+    Notes
+    -----
+    - The luminosity is calculated by interpolating the beaming factor from GRRMHD simulations as a function of the mass accretion rate and the spin of the black hole. 
+    For the viewing angle, a random value of the cosine of the angle is drawn from a uniform distribution between 0 and 1, which corresponds to an isotropic distribution
+    of the viewing angles. Then the angle is passed in the arccosine function to get the angle in radians, giving  more edge-on views (higher angles)
+    than face-on views (lower angles). This is what we expect for a population of sources with random orientations in the sky. 
+    The beaming factor is then interpolated from the GRRMHD simulations as a function of the mass accretion rate and the spin of the black hole, 
+    and it is used to compute the observed luminosity as L_obs = b * L_edd * (Mdot / Mdot_Edd) [[1]_].
+    - `spin_split` is used to determine which interpolation curve to use for the beaming factor. All spin values below `spin_split` will use 
+    the interpolation curve for spin = 0.0, while all spin values above `spin_split` will use the interpolation curve for spin = 0.9.
+    The relation mass accretion rate-spin of black hole being not linear, to spin up a black hole, e.g. from 0.4 to 0.6, it does not require the same amount of mass
+    accretion as from 0.6 to 0.8, and therefore the beaming factor does not change linearly with the spin of the black hole. 
+    Giving a high value for `spin_split` would better split the interpolation curves in the region of the spin where the beaming factor changes 
+    more rapidly, which is at high spin, and therefore it would give a better interpolation 
+    of the beaming factor as a function of the spin of the black hole.
+    
+    
     """
+    if not (0.0 <= spin_split <= 0.9):
+        Pwarn(f"spin_split should be between 0.0 and 0.9. Using default value of 0.8.", category="InappropriateValueWarning")
+        spin_split = 0.75
+    
     from scipy.interpolate import CubicSpline
 
-    #===== Interpolation beaming factor =====
-    x = np.array([0.00019849661254233293, 0.007264976019049385, 0.015165141198234235, 0.019862894361736112, 
-                  0.02683674201572341, 0.0347633734099139, 0.04973001799560581, 0.07036043259250561, 
-                  0.09179806674707756, 0.11164772800131086, 0.12990941635520548, 0.15113532078973227, 
-                  0.17709867771026944, 0.20404128458601542, 0.23208223938449565, 0.25666935312473926, 
-                  0.28120353443497165, 0.3041497428448653, 0.3374045419994575, 0.37122836477667104, 
-                  0.40530361659643815, 0.43656021651810417, 0.4762198397040623, 0.5254469996145609, 
-                  0.5863986927725598, 0.6701510301579215, 0.7741103227000927, 0.877249162577089, 
-                  1.0082569268550285, 1.1900665908363028, 1.3371261145151658, 1.453815656475052])
+    # 'Data_points_b_VS_theta.csv' or 'Data_points_b_VS_theta_Kwan.csv'
+    pathfile = 'Data_points_b_VS_theta.csv' # File path to this csv file containing data points of b VS theta
 
-    y = np.array([5.8907441301051096, 6.549299273126602, 7.386646969617738, 7.978714113894264, 
-                  8.543322177482613, 8.91957328870993, 9.261423416827904, 9.421549966009518, 
-                  9.301223657375935, 9.032803430424098, 8.727359723892695, 8.33475657585107, 
-                  7.672499084871621, 6.90426188359567, 6.04346598337081, 5.247461172410187, 
-                  4.525503320608691, 3.8590806881765416, 3.028212100611829, 2.2601291638341268, 
-                  1.5397139570151133, 1.1560581498718818, 0.7673116142864611, 0.49889138733462346, 
-                  0.33444543220206047, 0.22507190294409885, 0.12402865659153939, 0.06355697327825105, 
-                  0.03841186006379793, 0.05059875542540393, 0.045353762484966254, 0.0745097526538725])
-    
-    cs = CubicSpline(x, y, bc_type='natural')
+    #=============================
+    # Interpolation beaming factor 
+    # ============================
+
+    df = pd.read_csv(pathfile)
+    # Columns names in the csv file are : 
+    # 'x0_5', 'y0_5', 'x0_2', 'y0_2', 'x0_1', 'y0_1', for spinless BH
+    # 'x09_4', 'y09_4', 'x09_3', 'y09_3', 'x09_2', 'y09_2' for 0.9 spin BH
+
+    # Column names in Data_points_b_VS_theta_Kwan.csv file are :
+    # 'x_a0_low', 'y_a0_low', 'x_a0_high', 'y_a0_high' for spineless BH
+    # 'x_a09_low', 'y_a09_low', 'x_a09_high', 'y_a09_high' for 0.9 spin BH
+    # Low refers to mdot ~ 10 and high refers to mdot ~200
+
+    cs0 = CubicSpline(df['x_a0_high'].dropna().to_numpy(), df['y_a0_high'].dropna().to_numpy()) # Can be changed accroding to the name
+    cs09 = CubicSpline(df['x_a09_low'].dropna().to_numpy(), df['y_a09_low'].dropna().to_numpy()) # Can be changed accroding to the name
 
 
     #===== Convert LogMdot from Msun/yr to g/s =====
@@ -777,21 +811,26 @@ def Luminosity_GRRMHD_systems(Accretor_LogMdot, Mdot_Edd, L_edd, spin):
     
     #===== Radiative and observed luminosity =====
     Spin = np.asarray(spin, dtype=float)
-    #Spin = np.where(Spin > 0.45, 0.9, 0.0)
 
-    #L_rad = np.where(Spin == 0.0, 0.07 * Mdot_acc**(1.19), 0.11 * Mdot_acc**(1.43)) # In Eddington luminosity units
+    # If 'Data_points_b_VS_theta.csv', use the following :
+    #L_rad = np.where(Spin <= spin_split, 0.07 * Mdot_acc**(1.19), 0.11 * Mdot_acc**(1.43)) * L_edd # erg/s
 
-    L_rad = 0.07 * Mdot_acc**(1.19)
+    # If 'Data_points_b_VS_theta_Kwan.csv', use the following :
+    L_rad = np.where(Spin <= spin_split, 0.19 * Mdot_acc**(0.95), 0.73 * Mdot_acc**(1.13)) * L_edd # erg/s  
 
-    cos_angle = np.random.uniform(0, 1, size=len(Mdot_acc)) # Random viewing cosine angle between 0 and 1
-    theta = np.arccos(cos_angle) # Viewing angle [rad]
+    # Random viewing angle[rad] from an isotropic distribution of the cosine
+    theta = np.arccos(np.random.uniform(0, 1, size=len(Mdot_acc))) 
 
-    b = pd.Series(cs(theta)) # Beaming factor
+    # Beaming factor as a function of the random angle depending on the spin of the BH
+    b = np.where(Spin <= spin_split, cs0(theta), cs09(theta))
 
     # The lumiosity already includes the beaming factor, so we do not need to multiply by it again in plot_ccdf()
     Weight_times_beaming = False 
 
-    L_obs = L_rad * L_edd * b # erg/s
+    L_obs = L_rad * b # erg/s
+
+    if np.any(L_obs <= 0.0):
+        L_obs = np.where(L_obs <= 0.0, 1e-54, L_obs)
 
     return L_obs, b, Weight_times_beaming
 
@@ -803,20 +842,20 @@ def L_bolo(used_grid, bin_state, lg_mtransfer_rate, acc_log_mdot, donor_log_wind
     state and various physical parameters of the accretor and donor stars. 
     
     It calculates the geometrical beaming factor of a super-Eddington accreting system following 
-    the prescription of King (2008) and applies it to the luminosity in the super-Eddington regime. 
+    the prescription of King et al. (2001) and King (2009) or General Relativistic, Radiation Magneto-Hydrodynamics (GRRMHD) model. 
     This is an observational effect due to the inflated structure of the accretion disk that beams 
     the outgoing X-ray emission. The function also checks for the presence of high wind rates based 
     on the donor star filling at least 80% of its Roche lobe following the prescription of 
     *Hirai & Mandel (2021)* to compute the luminosity in wind-fed systems.
 
-    Requires that the input arrays have been through the XRB_selection_function to ensure that the 
-    systems are X-ray binaries containing a NS or BH accretor and a non-degenerate donor star, and 
-    that the binary state is either 'RLO1', 'RLO2' or 'detached' (wind-fed).
+    Requires that the input arrays have been through the `XRB_selection_function()` to ensure that the 
+    systems are X-ray binaries containing a NS or BH accretor and a non-degenerate donor star. 
+    The binary state is either 'RLO1', 'RLO2' for Roche lobe overflow systems or 'detached' wind-fed systems.
 
     Parameters
     ----------
     used_grid : str, default='classical'
-        Whether simulations have been performed using GRRMHD grids for RLO-BH systems or with classical grids. It can be either 'GRRMHD' or 'classical'.
+        Whether simulations have been performed using classical grids or with GRRMHD grids for RLO-BH systems. It can be either 'classical' or 'GRRMHD'.
     bin_state : array of str
         The final state of the binary system (e.g. 'RLO1', 'RLO2', 'detached', etc.).
     lg_mtransfer_rate : array of float
@@ -849,6 +888,8 @@ def L_bolo(used_grid, bin_state, lg_mtransfer_rate, acc_log_mdot, donor_log_wind
         Orbital eccentricity (dimensionless).
     spin : array of float
         Spin of the accretor (dimensionless).
+    B_surface : array of float
+        Surface magnetic field of the accretor in [G]. Only required for NS accretors.
     **kwargs : dict, optional
         - high_filling_RL : str, default=None
             Check whether the donor star fills at least 80% of its Roche lobe to get winds. Option : 'HiraiMandel21' chooses >= 80% filled systems.
@@ -866,34 +907,38 @@ def L_bolo(used_grid, bin_state, lg_mtransfer_rate, acc_log_mdot, donor_log_wind
 
     References
     ----------
-    .. [1] Hirai, R. & Mandel, I. (2021).  
-           *Conditions for accretion disc formation and observability of wind-accreting X-ray binaries.*. 
-           Publications of the Astronomical Society of Australia, 38, e056.  
-           https://doi.org/10.1017/pasa.2021.53
-    .. [2] Misra, D., Kovlakas, K., Fragos, T., Lazzarini, M., Bavera, S. S.,  
+    .. [1] Misra, D., Kovlakas, K., Fragos, T., Lazzarini, M., Bavera, S. S.,  
            Lehmer, B. D., Zezas, A., Zapartas, E., Xing, Z., Andrews, J. J., Dotter, A.,  
            Rocha, K. A., Srivastava, P. M., Sun, M. (2023).  
            *X-ray luminosity function of high-mass X-ray binaries: Studying the signatures of different physical processes using detailed binary evolution calculations*.  
            https://arxiv.org/abs/2209.05505v2
-    .. [3] Shakura, N. I. & Sunyaev, R. A. (1973).  
+    .. [2] King, A. R., Davies, M. B., Ward, M. J., Fabbiano, G., & Elvis, M. (2001).  
+           *Ultraluminous X-Ray Sources in External Galaxies.*. 
+           The Astrophysical Journal, 552(2), L109–L112. 
+           https://doi.org/10.1086/320262
+    .. [3] King, A. R. (2009).  
+           *Ultraluminous X-ray sources and neutron-star accretion.*. 
+           Monthly Notices of the Royal Astronomical Society, 393(1), L41–L44. 
+           https://doi.org/10.1111/j.1745-3933.2008.00593.x
+    .. [4] Shakura, N. I. & Sunyaev, R. A. (1973).  
            *Black holes in binary systems. Observational appearance.*. 
            Astronomy and Astrophysics, 24, 337.  
            https://ui.adsabs.harvard.edu/abs/1973A%26A....24..337S
-    .. [4] King, A. R. (2008).  
-           *Accretion in compact binaries: the Eddington limit and beaming.*. 
-           Monthly Notices of the Royal Astronomical Society, 385, L113.  
-           https://ui.adsabs.harvard.edu/abs/2008MNRAS.385L.113K
+    .. [5] Hirai, R. & Mandel, I. (2021).  
+           *Conditions for accretion disc formation and observability of wind-accreting X-ray binaries.*. 
+           Publications of the Astronomical Society of Australia, 38, e056.  
+           https://doi.org/10.1017/pasa.2021.53
     """
 
     #===== Optional parameters =====
     allowed_keys = {'high_filling_RL', 'alpha_BHL', 'Wind_Disk_BH_formation', 'Wind_velo_scheme'}
     unknown = sorted(set(kwargs.keys()) - allowed_keys)
     if unknown:
-            Pwarn(f"L_bolo(): unknown parameter(s): {unknown} (PID={os.getpid()})", category="InappropriateValueWarning")
+            Pwarn(f"L_bolo(): unknown parameter(s): {unknown}", category="InappropriateValueWarning")
 
     high_filling_RL = kwargs.get('high_filling_RL', None)
     if high_filling_RL not in [None, 'HiraiMandel21']:
-        Pwarn(f"high_filling_RL '{high_filling_RL}' not recognized. Choose 'HiraiMandel21' or None. (PID={os.getpid()}).", category="InappropriateValueWarning")
+        Pwarn(f"high_filling_RL '{high_filling_RL}' not recognized. Choose 'HiraiMandel21' or None.", category="InappropriateValueWarning")
 
     # Passed to BHL_mdot_acc function
     BHL_kwargs = {key: kwargs[key] for key in ['alpha_BHL', 'Wind_Disk_BH_formation'] if key in kwargs}
@@ -929,7 +974,6 @@ def L_bolo(used_grid, bin_state, lg_mtransfer_rate, acc_log_mdot, donor_log_wind
     mask_RLO = (bin_state == 'RLO1') | (bin_state == 'RLO2')
     mask_detached = (bin_state == 'detached')
     is_BH = (acc_state == 'BH')
-    is_NS = (acc_state == 'NS')
 
     # Whether to multiply the weights of the systems by the beaming factor when plotting the cumulative luminosity function (CCDF).
     Weight_times_beaming = np.full_like(bin_state, True, dtype=bool)
@@ -992,16 +1036,19 @@ def L_bolo(used_grid, bin_state, lg_mtransfer_rate, acc_log_mdot, donor_log_wind
         ratio[mask_valid] = Mdot[mask_valid] / Medd[mask_valid]
 
         is_Super_Edd = ratio >1.0
-        is_RLO_BH = mask_RLO & is_BH & is_Super_Edd # For GRRMHD systems RLO-BH systems only
+        is_RLO_BH_Sup_Edd = mask_RLO & is_BH & is_Super_Edd # For GRRMHD systems RLO-BH systems only
 
         # For RLO-NS systems, Wind-BH/NS systems
         Lx = eta * Mdot * const.clight**2
 
-        if np.any(is_RLO_BH):
-            Lx_RLO_BH, b_RLO_BH, W_x_b = Luminosity_GRRMHD_systems(acc_log_mdot[is_RLO_BH], Mdot_Edd = Medd[is_RLO_BH], L_edd = L_edd[is_RLO_BH], spin = spin[is_RLO_BH])            
-            Weight_times_beaming[is_RLO_BH] = W_x_b          
-            b[is_RLO_BH] = np.asarray(b_RLO_BH)            
-            Lx[is_RLO_BH] = np.asarray(Lx_RLO_BH)                
+        if np.any(is_RLO_BH_Sup_Edd):
+            Lx_RLO_BH, b_RLO_BH, W_x_b = Luminosity_GRRMHD_systems(acc_log_mdot[is_RLO_BH_Sup_Edd],
+                                                                   spin[is_RLO_BH_Sup_Edd],
+                                                                   Medd[is_RLO_BH_Sup_Edd], 
+                                                                   L_edd[is_RLO_BH_Sup_Edd])            
+            Weight_times_beaming[is_RLO_BH_Sup_Edd] = W_x_b          
+            b[is_RLO_BH_Sup_Edd] = np.asarray(b_RLO_BH)            
+            Lx[is_RLO_BH_Sup_Edd] = np.asarray(Lx_RLO_BH)                
             
         Lx = np.where(Lx==0.0, 1e-54, Lx) # To avoid zero luminosity and division by zero
         
@@ -1162,6 +1209,7 @@ def XRB_selection_function(history_chunk, oneline_chunk, formation_channels_chun
     Df_Be['Accretor_state'] = np.where(is_S1_compact, Df_Be['S1_state_f'], Df_Be['S2_state_f'])
     Df_Be['Donor_state'] = np.where(is_S1_compact, Df_Be['S2_state_f'], Df_Be['S1_state_f'])
     Df_Be['Weight_x_beaming'] = True
+    Df_Be['Beaming'] = 0.1 # Assumed as a duty cycle of 10% for Be systems
 
     #===== RLO / Winds systems =====
     Rest_of_systems = oneline_chunk.loc[~mask_be].copy()
@@ -1365,11 +1413,7 @@ def Stat_XLF(transient_population, Lmin=1e30, SFR = 1.0, stat_kwargs=None):
 
     Returns
     -------
-    L_sorted : np.ndarray
-        Sorted array of X-ray luminosities [erg/s].
-    N_weighted : np.ndarray
-        Weighted cumulative number of XRBs above each luminosity [number].
-    weights : pd.Series
+    Weights : pd.Series
         Weights associated with each XRB in the population.
 
     References
@@ -1379,10 +1423,6 @@ def Stat_XLF(transient_population, Lmin=1e30, SFR = 1.0, stat_kwargs=None):
            Rocha, K. A., Srivastava, P. M., Sun, M. (2023).  
            *X-ray luminosity function of high-mass X-ray binaries: Studying the signatures of different physical processes using detailed binary evolution calculations*.  
            https://arxiv.org/abs/2209.05505v2
-    .. [2] Bavera, S. S., Fragos, T., Zevin, M., et al. (2020). 
-           *The origin of spin in binary black holes.* 
-           Astronomy & Astrophysics, 635, A97. 
-           DOI: 10.1051/0004-6361/201936204.
 
     Notes
     -----
@@ -1434,19 +1474,26 @@ def Stat_XLF(transient_population, Lmin=1e30, SFR = 1.0, stat_kwargs=None):
     if Total_underlying_mass <= 0.0:
         raise ValueError("plot_ccdf: Total_underlying_mass must be > 0.0")
 
-    base_w = transient_population.calculate_model_weights(model_weights_identifier="base_IMF",
+    base_w = transient_population.calculate_model_weights(model_weights_identifier="IMF",
                                                           population_parameters=Pop_params)
     
     if isinstance(base_w, pd.DataFrame):
         # prefer the named column if present, else take first column
-        if "base_IMF" in base_w.columns:
-            weights_series = base_w["base_IMF"].to_numpy(float)
+        if "IMF" in base_w.columns:
+            weights_series = base_w["IMF"].to_numpy(float)
         else:
             weights_series = base_w.iloc[:, 0].to_numpy(float)
     else:
         weights_series = np.asarray(base_w, float)  # assume Series-like
     
-    Weights = weights_series * Total_underlying_mass
+    # True if we need to multiply by the beaming factor b, False if the weight already includes beaming.
+    W_x_b = transient_population.population['Weight_x_beaming'].to_numpy(dtype = bool)
+
+    b = transient_population.population['Beaming'].to_numpy(dtype = float)
+    b = np.where(np.isfinite(b) & (b > 0.0), b, 1.0)
+
+    # If we need to multiply by the beaming factor, we do it here, Otherwise, we assume that the weight already includes beaming (GRRMHD BH-RLO systems only).
+    Weights = weights_series * Total_underlying_mass * np.where(W_x_b, b, 1.0) 
 
     return Weights
 
@@ -1462,8 +1509,6 @@ def plot_ccdf(transient_population, ax, weights, mask, label, SFR = 1.0, **ccdf_
     ----------
     transient_population : TransientPopulation object
         The transient population.
-    SFR : float, optional
-        Star formation rate [M⊙/yr]. Default is 1.0. (E.g. Milky-Way SFR ~ 1.5 M⊙/yr. Starburst galaxies SFR ~ 10 M⊙/yr)
     ax : matplotlib.axes.Axes
         The axes on which to plot the CCDF (_fig , ax = plt.subplots(*args, **kwargs)_).
     weights : array-like
@@ -1472,6 +1517,8 @@ def plot_ccdf(transient_population, ax, weights, mask, label, SFR = 1.0, **ccdf_
         A boolean mask to filter the values.
     label : str
         The label for the CCDF plot.
+    SFR : float, optional
+        Star formation rate [M⊙/yr]. Default is 1.0. (E.g. Milky-Way SFR ~ 1.5 M⊙/yr. Starburst galaxies SFR ~ 10 M⊙/yr)
     linestyle : str
         The line style for the CCDF plot.
     **kwargs : dict, optional
@@ -1494,7 +1541,7 @@ def plot_ccdf(transient_population, ax, weights, mask, label, SFR = 1.0, **ccdf_
            https://arxiv.org/abs/2209.05505v2
     Notes
     -----
-    * Weights are assumed to already include IMF, binary fraction, and population 
+    - Weights are assumed to already include IMF, binary fraction, and population 
     synthesis corrections
 
     Example
@@ -1516,13 +1563,8 @@ def plot_ccdf(transient_population, ax, weights, mask, label, SFR = 1.0, **ccdf_
     if norm_factor <= 0.0:
         raise ValueError("plot_ccdf: norm_factor must be > 0.0")
 
-    # True if we need to multiply by the beaming factor b, False if the weight already includes beaming.
-    W_x_b = transient_population.population['Weight_x_beaming'].to_numpy(dtype = bool)
-
+    #===== Compute the CCDF =====
     L = np.log10(transient_population.population['Lx'].to_numpy(dtype = float) * norm_factor)
-
-    b = transient_population.population['Beaming'].to_numpy(dtype = float)
-    b = np.where(np.isfinite(b) & (b > 0.0), b, 1.0)
 
     selection = mask & np.isfinite(L) & (L >= 35)
 
@@ -1530,8 +1572,8 @@ def plot_ccdf(transient_population, ax, weights, mask, label, SFR = 1.0, **ccdf_
         return
 
     L_selec = L[selection]
-    # If we need to multiply by the beaming factor, we do it here, Otherwise, we assume that the weight already includes beaming (GRRMHD BH-RLO systems only).
-    Weight_select = weights[selection] * np.where(W_x_b[selection], b[selection], 1.0)
+
+    Weight_select = weights[selection]
 
     order = np.argsort(L_selec)
     L_sorted = L_selec[order]
@@ -1539,7 +1581,10 @@ def plot_ccdf(transient_population, ax, weights, mask, label, SFR = 1.0, **ccdf_
 
     N = np.cumsum(Weights_sorted[::-1])[::-1]  # Cumulative sum from the end to the beginning
 
-
+    #===== Plotting the CCDF =====
+    # Extension of the CCDF to the edges of the plot, with a horizontal line at y = N(Lmin) for L < Lmin, 
+    # and a horizontal line at y = 0 for L > Lmax 
+    # (if the xlim of the plot is larger than the range of L values in the population).
     if extend_to_edges:
         cur_xlim = ax.get_xlim()
         if cur_xlim == (0.0, 1.0):
@@ -1625,7 +1670,7 @@ def Plot_cumulative_XLF(transient_population, weights, SFR = 1.0, title=None, ax
     H1_rich = transient_population.population['Donor_state'].str.contains('H-rich|accreted_He', regex=True, na=False)
     He_rich = transient_population.population['Donor_state'].str.contains('stripped_He|accreted_He_Core_He_burning', regex=True, na=False)
 
-    
+    # Default colors to directly compare with Figure 1 of Misra et al. (A&A 672, A99 (2023)) 
     plot_ccdf(transient_population, ax, weights, Lumino_range, 'Total XRB population', SFR = SFR, linestyle='-', color='#1F77B4', **plot_kwargs)
     plot_ccdf(transient_population, ax, weights, Lumino_range & Be_XRB, 'Be-XRBs', SFR = SFR, linestyle=':', color='#808080',**plot_kwargs)
     plot_ccdf(transient_population, ax, weights, Lumino_range & RLO & BH & He_rich, 'RLO BH-He-rich', SFR = SFR, linestyle='-', color='#B760C4', **plot_kwargs)
