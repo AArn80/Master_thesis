@@ -1,6 +1,6 @@
-__version__ = "1.2.0"
+__version__ = "1.3.0"
 
-__author__ = "Arnaud Aguet <arnaud.aguet@etu.unige.ch>"
+__author__ = "Arnaud Aguet <arnaud.aguet@etu.unige.ch><arnaud552000@gmail.com>"
 
 
 import os
@@ -52,20 +52,23 @@ def Systems_selection_for_XRB(path_file_h5, filename_out, verbose=True):
     For a single file:
 
     >>> Systems_selection_for_XRB('path/1e+00_Zsun_population.h5', 'BHNS_selected')
-    File: 1e+00_Zsun_population.h5. Selection stored as path/BHNS_selected.h5
-          Number of selected systems: 8000.
+    ======================================================= 
+    📁 Input  : 1e+00_Zsun_population.h5 
+    💾 Output : BHNS_selected.h5 
+    ─────────────────────────────────────────────────────── 
+    Total systems (input):         10000000 
+    Selected systems (output):     17500 
+    Removed systems:               9982500 
+    ─────────────────────────────────────────────────────── 
+    Execution time:                8min 36sec 
+    ======================================================= 
 
     For a list of files:
 
     >>> files_list = ['path/1e+00_Zsun_population.h5', 'path/1e-01_Zsun_population.h5', 'path/1e-04_Zsun_population.h5']
     >>> filename_out_list = ['NewName1', 'NewName2', 'NewName3']
     >>> Systems_selection_for_XRB(files_list, filename_out_list)
-    File: 1e+00_Zsun_population.h5. Selection stored as path/NewName1.h5
-          Number of selected systems: 8000.
-    File: 1e-01_Zsun_population.h5. Selection stored as path/NewName2.h5
-          Number of selected systems: 7543.
-    File: 1e-04_Zsun_population.h5. Selection stored as path/NewName3.h5
-          Number of selected systems: 12756.
+    
 
     """
     
@@ -362,7 +365,8 @@ def Stefan_Boltzmann_law(Luminosity, Radius):
     return Teff
 
 def Wind_velocity_BHL(donor_mass, donor_logR, donor_logL, donor_log_wind_mdot, 
-                      donor_surface_H1, donor_He_core_mass, Wind_velo_scheme ='Kudritzki+2000'):
+                      donor_surface_H1, donor_He_core_mass, 
+                      Wind_velo_scheme ='Kudritzki+2000'):
     """
     Compute the wind velocity of the donor star in a detached binary system using either the prescription from :cite:`Hurley et al. 2002`   or :cite:`Kudritzki & Puls 2000`. 
     
@@ -717,12 +721,16 @@ def Be_XRB_Lx(period, filtered = True):
               category="InappropriateValueWarning", stacklevel=2)
         Lx = np.zeros_like(period, dtype=float)
         return Lx
-    # [2] Equation 11
-    Lx = (10.0**35) * 10.0**(4.53 - (1.50 * np.log10(period)))
+
+    if np.any(period <= 0.0):
+        Pwarn(f"Be_XRB_Lx: Orbital period should be positive. Returning NaN for non-positive periods.", 
+              category="InappropriateValueWarning", stacklevel=2)
+        # [2] Equation 11
+        Lx = np.where(period > 0.0, (10.0**35) * 10.0**(4.53 - (1.50 * np.log10(period))), np.nan)
 
     return Lx
 
-def Luminosity_GRRMHD_systems(Accretor_LogMdot, spin, Mdot_Edd, L_edd, spin_split = 0.75):
+def Luminosity_GRRMHD_systems(Accretor_LogMdot, spin, Mdot_Edd, L_edd, **kwargs):
     """
     Calculate the luminosity of Black holes accreting material through Roche lobe overflow.
 
@@ -738,9 +746,8 @@ def Luminosity_GRRMHD_systems(Accretor_LogMdot, spin, Mdot_Edd, L_edd, spin_spli
         Eddington mass accretion rate in grams per second (g/s).
     L_edd : array-like
         Eddington luminosity in erg/s.
-    spin_split : float, optional
-        Spin value to distinguish between low-spin and high-spin black holes for the luminosity calculation.
-        It should be between 0.0 and 0.9. Default is 0.75.
+    **kwargs : dict, optional
+        - `spin_split` (float, *Default* = 0.75): A threshold value for the spin parameter to determine which interpolation curve to use for the beaming factor.
     
     Returns
     -------
@@ -761,11 +768,11 @@ def Luminosity_GRRMHD_systems(Accretor_LogMdot, spin, Mdot_Edd, L_edd, spin_spli
     Notes
     -----
     - The luminosity is calculated by interpolating the beaming factor from GRRMHD simulations as a function of the mass accretion rate and the spin of the black hole. 
-    For the viewing angle, a random value of the cosine of the angle is drawn from a uniform distribution between 0 and 1, which corresponds to an isotropic distribution
-    of the viewing angles. Then the angle is passed in the arccosine function to get the angle in radians, giving  more edge-on views (higher angles)
-    than face-on views (lower angles). This is what we expect for a population of sources with random orientations in the sky. 
+    For the viewing angle, a random value of the cosine of the angle is drawn from a uniform distribution between 1 and 0.6428 (corresponding to an angle of 50 degrees - cos(50*np.pi/180)), 
+    which corresponds to an isotropic distribution of the viewing angles. Then the drawn value is passed in the arccosine function to get the angle in radians, 
+    giving  more edge-on views (higher angles) than face-on views (lower angles). This is what we expect for a population of sources with random orientations in the sky. 
     The beaming factor is then interpolated from the GRRMHD simulations as a function of the mass accretion rate and the spin of the black hole, 
-    and it is used to compute the observed luminosity as L_obs = b * L_edd * (Mdot / Mdot_Edd) [[1]_].
+    and it is used to compute the observed luminosity as L_obs = b * L_edd * (Mdot / Mdot_Edd).
     - `spin_split` is used to determine which interpolation curve to use for the beaming factor. All spin values below `spin_split` will use 
     the interpolation curve for spin = 0.0, while all spin values above `spin_split` will use the interpolation curve for spin = 0.9.
     The relation mass accretion rate-spin of black hole being not linear, to spin up a black hole, e.g. from 0.4 to 0.6, it does not require the same amount of mass
@@ -773,65 +780,99 @@ def Luminosity_GRRMHD_systems(Accretor_LogMdot, spin, Mdot_Edd, L_edd, spin_spli
     Giving a high value for `spin_split` would better split the interpolation curves in the region of the spin where the beaming factor changes 
     more rapidly, which is at high spin, and therefore it would give a better interpolation 
     of the beaming factor as a function of the spin of the black hole.
+    - We also interpolate the beaming factor according to the mass accretion rate. Two interpolation curves are used for each spin value,
+    one for low mass accretion rates (mdot ~10), and one for high mass accretion rates (mdot ~200). If the mass accretion rate of a system is between these two values,
+    we interpolate the beaming factor between the two curves according to the mass accretion rate of the system. 
+    If the mass accretion rate is below 10, we use the low mass accretion rate curve, and if it is above 200, we use the high mass accretion rate curve.
+    - Systems with mass accretion rates above 2000 are not correctly interpolated, so we set an upper limit to 2000 to avoid incorrect values.
     
     
     """
+    
+    spin_split = kwargs.get('spin_split', 0.75)
     if not (0.0 <= spin_split <= 0.9):
         Pwarn(f"spin_split should be between 0.0 and 0.9. Using default value of 0.8.", category="InappropriateValueWarning")
         spin_split = 0.75
     
-    from scipy.interpolate import CubicSpline
-
-    # 'Data_points_b_VS_theta.csv' or 'Data_points_b_VS_theta_Kwan.csv'
-    pathfile = 'Data_points_b_VS_theta.csv' # File path to this csv file containing data points of b VS theta
-
-    #=============================
-    # Interpolation beaming factor 
-    # ============================
-
-    df = pd.read_csv(pathfile)
-    # Columns names in the csv file are : 
-    # 'x0_5', 'y0_5', 'x0_2', 'y0_2', 'x0_1', 'y0_1', for spinless BH
-    # 'x09_4', 'y09_4', 'x09_3', 'y09_3', 'x09_2', 'y09_2' for 0.9 spin BH
-
-    # Column names in Data_points_b_VS_theta_Kwan.csv file are :
-    # 'x_a0_low', 'y_a0_low', 'x_a0_high', 'y_a0_high' for spineless BH
-    # 'x_a09_low', 'y_a09_low', 'x_a09_high', 'y_a09_high' for 0.9 spin BH
-    # Low refers to mdot ~ 10 and high refers to mdot ~200
-
-    cs0 = CubicSpline(df['x_a0_high'].dropna().to_numpy(), df['y_a0_high'].dropna().to_numpy()) # Can be changed accroding to the name
-    cs09 = CubicSpline(df['x_a09_low'].dropna().to_numpy(), df['y_a09_low'].dropna().to_numpy()) # Can be changed accroding to the name
-
+    Spin = np.asarray(spin, dtype=float)
+    Mdot_Edd = np.asarray(Mdot_Edd, dtype=float)
+    L_edd = np.asarray(L_edd, dtype=float)
 
     #===== Convert LogMdot from Msun/yr to g/s =====
     Acc_Log_Mdot_MsunYr = np.asarray(Accretor_LogMdot) 
     Acc_Mdot_gps = 10**Acc_Log_Mdot_MsunYr * const.Msun / const.secyer
 
-    Mdot_acc = Acc_Mdot_gps / Mdot_Edd # In Eddingtion units
+    # File path to this csv file containig data points of b VS theta for different spins and mass accretion rates. 
+    pathfile = 'Data_points_b_VS_theta.csv'
+    # Column names in Data_points_b_VS_theta_Kwan.csv file are :
+    # 'x_a0_low', 'y_a0_low', 'x_a0_high', 'y_a0_high' for spineless BH
+    # 'x_a09_low', 'y_a09_low', 'x_a09_high', 'y_a09_high' for 0.9 spin BH
+    # Low refers to mdot ~ 10 and high refers to mdot ~200
+
+    #=============================
+    # Interpolation beaming factor 
+    # ============================
+
+    from scipy.interpolate import CubicSpline
+    df = pd.read_csv(pathfile)
     
-    #===== Radiative and observed luminosity =====
-    Spin = np.asarray(spin, dtype=float)
+    rng = np.random.default_rng(seed=33)
+    # Random viewing angle[rad] from an isotropic distribution of the cosine 
+    theta = np.arccos(rng.uniform(np.cos(50*np.pi/180), 1, size=len(Accretor_LogMdot)))
 
-    # If 'Data_points_b_VS_theta.csv', use the following :
-    #L_rad = np.where(Spin <= spin_split, 0.07 * Mdot_acc**(1.19), 0.11 * Mdot_acc**(1.43)) * L_edd # erg/s
+    from scipy.interpolate import CubicSpline
 
-    # If 'Data_points_b_VS_theta_Kwan.csv', use the following :
-    L_rad = np.where(Spin <= spin_split, 0.19 * Mdot_acc**(0.95), 0.73 * Mdot_acc**(1.13)) * L_edd # erg/s  
+    cs0_low = CubicSpline(df['x_a0_low'].dropna(), df['y_a0_low'].dropna())
+    cs0_high = CubicSpline(df['x_a0_high'].dropna(), df['y_a0_high'].dropna())
+    cs09_low = CubicSpline(df['x_a09_low'].dropna(), df['y_a09_low'].dropna())
+    cs09_high = CubicSpline(df['x_a09_high'].dropna(), df['y_a09_high'].dropna())
 
-    # Random viewing angle[rad] from an isotropic distribution of the cosine
-    theta = np.arccos(np.random.uniform(0, 1, size=len(Mdot_acc))) 
+    # --- Evaluate splines ---
+    b0_low  = cs0_low(theta)
+    b0_high = cs0_high(theta)
+    b9_low  = cs09_low(theta)
+    b9_high = cs09_high(theta)
 
-    # Beaming factor as a function of the random angle depending on the spin of the BH
-    b = np.where(Spin <= spin_split, cs0(theta), cs09(theta))
+    #===== Min and max mdot for interpolation from [1], table 2 =====
+    # All in Eddington units
+    mdot_min_a0 = 8
+    mdot_min_a09 = 7
+    mdot_max = 192 
 
-    # The lumiosity already includes the beaming factor, so we do not need to multiply by it again in plot_ccdf()
+    Mdot_acc = np.divide(Acc_Mdot_gps, Mdot_Edd, 
+                         out=np.full_like(Acc_Mdot_gps, np.nan, dtype=float), 
+                         where=Mdot_Edd > 0)
+    # As mentionned in [1], above mdot ~ 2000, value must not be correctly interpolated, 
+    # so we set an upper limit to 2000 to avoid incorrect values.
+    Mdot_acc = np.clip(Mdot_acc, 1e-10, 2000)
+    log_mdot = np.log10(Mdot_acc)
+
+    #===== Radiative luminosity =====
+    # Spinless L_rad for spin <= spin_split, Spin dependent L_rad for spin > spin_split
+    L_rad = np.where(Spin <= spin_split,  0.19 * Mdot_acc**(0.95), 0.73 * Mdot_acc**(1.13)) * L_edd
+
+    # --- Weights ---
+    w0 = (np.log10(mdot_max) - log_mdot) / (np.log10(mdot_max) - np.log10(mdot_min_a0))
+    w9 = (np.log10(mdot_max) - log_mdot) / (np.log10(mdot_max) - np.log10(mdot_min_a09))
+
+    w0 = np.clip(w0, 0, 1)
+    w9 = np.clip(w9, 0, 1)
+
+    # --- Interpolation ---
+    b0 = 10**(w0 * np.log10(b0_low) + (1 - w0) * np.log10(b0_high))
+    b9 = 10**(w9 * np.log10(b9_low) + (1 - w9) * np.log10(b9_high))
+
+    #===== Final beaming factor =====
+    b = np.where(Spin <= spin_split, b0, b9)
+    
     Weight_times_beaming = False 
 
     L_obs = L_rad * b # erg/s
 
-    if np.any(L_obs <= 0.0):
-        L_obs = np.where(L_obs <= 0.0, 1e-54, L_obs)
-
+    bad = (~np.isfinite(L_obs)) | (L_obs <= 0.0)
+    if np.any(bad): # To avoid a error in log10
+        L_obs = np.where(bad <= 0.0, 1e-54, L_obs)
+        
     return L_obs, b, Weight_times_beaming
 
 def L_bolo(used_grid, bin_state, lg_mtransfer_rate, acc_log_mdot, donor_log_wind_mdot, acc_state, donor_log_L, 
@@ -902,8 +943,8 @@ def L_bolo(used_grid, bin_state, lg_mtransfer_rate, acc_log_mdot, donor_log_wind
         - Edd_state: 'Sub-Eddington' or 'Super-Eddington' depending on whether the accretion rate is below or above the Eddington limit.
         - beaming: Beaming factor (b) applied to the luminosity in the super-Eddington regime, dimensionless.
         - Weight_times_beaming: A flag indicating whether the weights of the systems should be multiplied by the beaming factor when plotting the cumulative luminosity function (CCDF). 
-        For GRRMHD systems, this is set to False because the luminosity already includes the beaming factor, so we do not need to multiply by it again in `plot_ccdf()`. 
-        For classical systems, this is set to True because the luminosity does not include the beaming factor, so we need to multiply by it in `plot_ccdf()`.
+        For GRRMHD systems, it is set to False because the luminosity already includes the beaming factor, so we do not need to multiply by it again in `plot_ccdf()`. 
+        For classical systems, it is set to True because the luminosity does not include the beaming factor, so we need to multiply by it in `plot_ccdf()`.
 
     References
     ----------
@@ -914,12 +955,12 @@ def L_bolo(used_grid, bin_state, lg_mtransfer_rate, acc_log_mdot, donor_log_wind
            https://arxiv.org/abs/2209.05505v2
     .. [2] King, A. R., Davies, M. B., Ward, M. J., Fabbiano, G., & Elvis, M. (2001).  
            *Ultraluminous X-Ray Sources in External Galaxies.*. 
-           The Astrophysical Journal, 552(2), L109–L112. 
-           https://doi.org/10.1086/320262
-    .. [3] King, A. R. (2009).  
-           *Ultraluminous X-ray sources and neutron-star accretion.*. 
-           Monthly Notices of the Royal Astronomical Society, 393(1), L41–L44. 
-           https://doi.org/10.1111/j.1745-3933.2008.00593.x
+           The Astrophysical Journal, 552(2), L109. 
+           https://doi.org/10.1086/320343
+    .. [3] King, A. R. (2008).  
+           *Accretion rates and beaming in ultraluminous X-ray sources*. 
+           Monthly Notices of the Royal Astronomical Society, 385(1), L113–L115. 
+           https://doi.org/10.1111/j.1745-3933.2008.00444.x
     .. [4] Shakura, N. I. & Sunyaev, R. A. (1973).  
            *Black holes in binary systems. Observational appearance.*. 
            Astronomy and Astrophysics, 24, 337.  
@@ -931,7 +972,7 @@ def L_bolo(used_grid, bin_state, lg_mtransfer_rate, acc_log_mdot, donor_log_wind
     """
 
     #===== Optional parameters =====
-    allowed_keys = {'high_filling_RL', 'alpha_BHL', 'Wind_Disk_BH_formation', 'Wind_velo_scheme'}
+    allowed_keys = {'high_filling_RL', 'alpha_BHL', 'Wind_Disk_BH_formation', 'Wind_velo_scheme', 'spin_split'}
     unknown = sorted(set(kwargs.keys()) - allowed_keys)
     if unknown:
             Pwarn(f"L_bolo(): unknown parameter(s): {unknown}", category="InappropriateValueWarning")
@@ -942,6 +983,8 @@ def L_bolo(used_grid, bin_state, lg_mtransfer_rate, acc_log_mdot, donor_log_wind
 
     # Passed to BHL_mdot_acc function
     BHL_kwargs = {key: kwargs[key] for key in ['alpha_BHL', 'Wind_Disk_BH_formation'] if key in kwargs}
+
+    GRRMHD_kwargs = {key: kwargs[key] for key in ['spin_split'] if key in kwargs}
 
     # Passed to Wind_velocity_BHL function
     Wind_velo_scheme = kwargs.get('Wind_velo_scheme', 'Kudritzki+2000')
@@ -999,6 +1042,7 @@ def L_bolo(used_grid, bin_state, lg_mtransfer_rate, acc_log_mdot, donor_log_wind
     #Winds-NS/BH
     Mdot = np.where(mask_detached, Mdot_BHL, Mdot)
 
+    #===== Grid splitting =====
     if used_grid == 'classical':
         
         #===== Mass transfer rate through RLO =====
@@ -1012,7 +1056,7 @@ def L_bolo(used_grid, bin_state, lg_mtransfer_rate, acc_log_mdot, donor_log_wind
         ratio[mask_valid] = Mdot[mask_valid] / Medd[mask_valid]
     
         #===== Luminosity calculation =====
-        # Follows King et al. (2008) [4]
+        # Follows King et al. (2008) [2] & [3]
         Lx_sub = Mdot * eta * const.clight**2 # Sub-Eddington case
 
         # Beaming
@@ -1045,7 +1089,8 @@ def L_bolo(used_grid, bin_state, lg_mtransfer_rate, acc_log_mdot, donor_log_wind
             Lx_RLO_BH, b_RLO_BH, W_x_b = Luminosity_GRRMHD_systems(acc_log_mdot[is_RLO_BH_Sup_Edd],
                                                                    spin[is_RLO_BH_Sup_Edd],
                                                                    Medd[is_RLO_BH_Sup_Edd], 
-                                                                   L_edd[is_RLO_BH_Sup_Edd])            
+                                                                   L_edd[is_RLO_BH_Sup_Edd],
+                                                                   **GRRMHD_kwargs)            
             Weight_times_beaming[is_RLO_BH_Sup_Edd] = W_x_b          
             b[is_RLO_BH_Sup_Edd] = np.asarray(b_RLO_BH)            
             Lx[is_RLO_BH_Sup_Edd] = np.asarray(Lx_RLO_BH)                
@@ -1056,7 +1101,7 @@ def L_bolo(used_grid, bin_state, lg_mtransfer_rate, acc_log_mdot, donor_log_wind
                              'Sub-Eddington', 'Super-Eddington')
         beaming = b
         
-    # [1] Hirai & Mandel 2021
+    # [5] Hirai & Mandel 2021
     if (high_filling_RL == 'HiraiMandel21'):
         mask_hirai = (10**Donor_log_radius / Donor_RL_radius < 0.8) & (bin_state == 'detached') & (acc_state == 'BH')
         Lx = np.where(mask_hirai, 10**(-54), Lx)
@@ -1115,8 +1160,7 @@ def XRB_selection_function(history_chunk, oneline_chunk, formation_channels_chun
            Section 2.3.2, Equation 10
     .. [3] Hirai, R. & Mandel, I. (2021).  
            *Conditions for accretion disc formation and observability of wind-accreting X-ray binaries.*  
-           Publications of the Astronomical Society of Australia, 38, e056.  
-           doi:10.1017/pasa.2021.53  
+           Publications of the Astronomical Society of Australia, 38, e056.   
            https://doi.org/10.1017/pasa.2021.53
     .. [4] Hurley, J. R., Tout, C. A., & Pols, O. R. 2002, MNRAS, 329, 897
     .. [5] Kudritzki, R.-P., & Puls, J. 2000, ARA&A, 38, 613
@@ -1138,11 +1182,11 @@ def XRB_selection_function(history_chunk, oneline_chunk, formation_channels_chun
     --------
     >>> from posydon.popsyn.synthetic_population import Population
     
-    >>> pop = Population('Simulation_file.h5')
-    >>> Systems_selection_XRB(pop, 'FileName')
+    >>> Systems_selection_XRB(path_to_h5_file/File.h5, 'FileName')
 
     >>> selec_pop = Population('FileName.h5')
     >>> Transient_pop = selec_pop.create_transient_population(XRB_selection_function, 'Transient_Name')
+
     # Or, if you need to use kwargs in the selection function : 
     >>> Transient_pop = selec_pop.create_transient_population(lambda h, o, f: XRB_selection_function(h, o, f, **kwargs), 'Transient_Name')
 
@@ -1166,7 +1210,7 @@ def XRB_selection_function(history_chunk, oneline_chunk, formation_channels_chun
             formation_channels_chunk = formation_channels_chunk.copy()
 
     #===== Kwargs control =====
-    allowed_keys = {'alpha_BHL', 'Wind_velo_scheme', 'high_filling_RL', 'Wind_Disk_BH_formation', 'used_grid'}
+    allowed_keys = {'alpha_BHL', 'Wind_velo_scheme', 'high_filling_RL', 'Wind_Disk_BH_formation', 'used_grid', 'spin_split'}
     unknown = sorted(set(kwargs.keys()) - allowed_keys)
     if unknown:
         Pwarn(f"XRB_selection_function: unknown parameter(s): {unknown} (PID={os.getpid()})."
@@ -1484,16 +1528,10 @@ def Stat_XLF(transient_population, Lmin=1e30, SFR = 1.0, stat_kwargs=None):
         else:
             weights_series = base_w.iloc[:, 0].to_numpy(float)
     else:
-        weights_series = np.asarray(base_w, float)  # assume Series-like
-    
-    # True if we need to multiply by the beaming factor b, False if the weight already includes beaming.
-    W_x_b = transient_population.population['Weight_x_beaming'].to_numpy(dtype = bool)
-
-    b = transient_population.population['Beaming'].to_numpy(dtype = float)
-    b = np.where(np.isfinite(b) & (b > 0.0), b, 1.0)
+        weights_series = np.asarray(base_w, float)  # assume Series-like 
 
     # If we need to multiply by the beaming factor, we do it here, Otherwise, we assume that the weight already includes beaming (GRRMHD BH-RLO systems only).
-    Weights = weights_series * Total_underlying_mass * np.where(W_x_b, b, 1.0) 
+    Weights = weights_series * Total_underlying_mass 
 
     return Weights
 
@@ -1566,6 +1604,10 @@ def plot_ccdf(transient_population, ax, weights, mask, label, SFR = 1.0, **ccdf_
     #===== Compute the CCDF =====
     L = np.log10(transient_population.population['Lx'].to_numpy(dtype = float) * norm_factor)
 
+    W_x_b = transient_population.population['Weight_times_beaming'].to_numpy(dtype=bool)
+    b = transient_population.population['Lx'].to_numpy(dtype = float)
+    b = np.where(np.isfinite(b) & (b >0), b, 1.0)
+
     selection = mask & np.isfinite(L) & (L >= 35)
 
     if not np.any(selection):
@@ -1573,7 +1615,9 @@ def plot_ccdf(transient_population, ax, weights, mask, label, SFR = 1.0, **ccdf_
 
     L_selec = L[selection]
 
-    Weight_select = weights[selection]
+    # If we need to multiply by the beaming factor, we do it here, Otherwise, 
+    # we assume that the weight already includes beaming (GRRMHD BH-RLO systems only).
+    Weight_select = weights[selection] * np.where(W_x_b[selection], b[selection], 1.0)
 
     order = np.argsort(L_selec)
     L_sorted = L_selec[order]
@@ -1583,7 +1627,7 @@ def plot_ccdf(transient_population, ax, weights, mask, label, SFR = 1.0, **ccdf_
 
     #===== Plotting the CCDF =====
     # Extension of the CCDF to the edges of the plot, with a horizontal line at y = N(Lmin) for L < Lmin, 
-    # and a horizontal line at y = 0 for L > Lmax 
+    # and a vertical line at y = 0 for L > Lmax 
     # (if the xlim of the plot is larger than the range of L values in the population).
     if extend_to_edges:
         cur_xlim = ax.get_xlim()
@@ -1591,12 +1635,8 @@ def plot_ccdf(transient_population, ax, weights, mask, label, SFR = 1.0, **ccdf_
             xmin, xmax = float(L_sorted[0]), float(L_sorted[-1])
         else:
             xmin, xmax = cur_xlim
-        cur_ylim = ax.get_ylim()
-        if cur_ylim == (0.0, 1.0):
-            ymin = np.nextafter(0, 1)
-        else:
-            ymin = cur_ylim[0]
-
+        ymin = np.nextafter(0, 1)
+        
     # Total vlaue above the smallest L
         y0 = float(np.sum(Weights_sorted))
 
@@ -1718,7 +1758,7 @@ def Plot_cumulative_XLF(transient_population, weights, SFR = 1.0, title=None, ax
 def plot_Lehmer19_XLF(ax, path_fits, SFR_total=45.4, color='#FFB2B2', label='Lehmer+19', **kwargs):
     """
     Superpose the observed XLF from Lehmer+19 (table7) on an existing axis. This function uses the total SFR of the observed population of 38 galaxies from `Lehmer+19` to normalize the XLF.
-    The total SFR is 45.3 M⊙/yr, which is the sum of the SFRs of the 38 galaxies in the sample (see Lehmer+19, section 3.2, Table 1).
+    The total SFR is 45.4 M⊙/yr, which is the sum of the SFRs of the 38 galaxies in the sample (see Lehmer+19, section 3.2, Table 1).
     
     Parameters
     ----------
@@ -1796,7 +1836,6 @@ def plot_Lehmer19_XLF(ax, path_fits, SFR_total=45.4, color='#FFB2B2', label='Leh
     y_low_ext = np.r_[N_low[0], N_low, ymin]
     y_high_ext = np.r_[N_high[0], N_high, ymin]
 
-    # Avoid passing linewidth twice when user provides it via **kwargs
     fill_lw = kwargs.pop('linewidth', 0.8)
     ax.fill_between(x_ext, y_low_ext, y_high_ext, color=color, label=label, linewidth=fill_lw, **kwargs)
 
@@ -1931,5 +1970,3 @@ def Orbital_period_from_separation(separation, Mass1, Mass2):
     P_days = P / const.day2sec  # [days]
 
     return P_days
-
-
