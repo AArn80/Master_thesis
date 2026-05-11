@@ -1,4 +1,4 @@
-__version__ = "1.3.0"
+__version__ = "1.3.1"
 
 __author__ = "Arnaud Aguet <arnaud.aguet@etu.unige.ch><arnaud552000@gmail.com>"
 
@@ -503,7 +503,7 @@ def Wind_velocity_BHL(donor_mass, donor_logR, donor_logL, donor_log_wind_mdot,
     return V_wind_out
 
 def BHL_mdot_acc(Macc_Msun, donor_mass_Msun, accretor_type, donor_log_radius,
-                 donor_log_wind_mdot, a_cm, ecc, V_wind, spin, **kwargs):
+                 donor_log_wind_mdot, a_Rsun, ecc, V_wind, spin, **kwargs):
     """
     Compute the `Bondi-Hoyle-Lyttleton (BHL)`accretion rate for a detached binary system where the accretion happens through winds.
     These winds are assumed to be isotropic and the accretion is assumed to be spherically symmetric.
@@ -574,7 +574,7 @@ def BHL_mdot_acc(Macc_Msun, donor_mass_Msun, accretor_type, donor_log_radius,
     acc_type_arr = np.asarray(accretor_type, dtype=object)
     logR_donor_arr = np.asarray(donor_log_radius, dtype=float)
     logMdot_w_arr = np.asarray(donor_log_wind_mdot, dtype=float)
-    a_arr = np.asarray(a_cm, dtype=float)
+    a_arr_cm = np.asarray(a_Rsun, dtype=float) * const.Rsun # Convert from [R⊙] to [cm]
     ecc_arr = np.asarray(ecc, dtype=float)
     v_wind_arr = np.asarray(V_wind, dtype=float)
     spin_arr = np.asarray(spin, dtype=float)
@@ -591,7 +591,7 @@ def BHL_mdot_acc(Macc_Msun, donor_mass_Msun, accretor_type, donor_log_radius,
         Rdon_i = float(10**logR_donor_arr[idx] * const.Rsun)
         logMdot_w_i = float(logMdot_w_arr[idx])
         mdot_w_i = float(10**logMdot_w_i)
-        a_i = float(a_arr[idx])
+        a_i = float(a_arr_cm[idx])
         ecc_i = float(np.clip(ecc_arr[idx], 0.0, 0.999)) if np.isfinite(ecc_arr[idx]) else 0.0
         v_wind_i = float(v_wind_arr[idx])
         spin_i = float(spin_arr[idx])
@@ -877,7 +877,7 @@ def Luminosity_GRRMHD_systems(Accretor_LogMdot, spin, Mdot_Edd, L_edd, **kwargs)
 
 def L_bolo(used_grid, bin_state, lg_mtransfer_rate, acc_log_mdot, donor_log_wind_mdot, acc_state, donor_log_L, 
            Macc, Mdonor, Acc_log_radius, Donor_log_radius, Donor_surface_H1, donor_He_core_mass, 
-           Donor_RL_radius, a_cm, ecc, spin, B_surface, **kwargs):
+           Donor_RL_radius, a_Rsun, ecc, spin, B_surface, **kwargs):
     """ 
     This function calculates the bolometric luminosity (L_bolo) of a binary system based on its final 
     state and various physical parameters of the accretor and donor stars. 
@@ -923,8 +923,8 @@ def L_bolo(used_grid, bin_state, lg_mtransfer_rate, acc_log_mdot, donor_log_wind
         Mass of the helium core of the donor star in [M⊙].
     Donor_RL_radius : array of float
         Roche lobe radius of the donor star in [R⊙].
-    a_cm : array of float
-        Orbital separation in [cm].
+    a_Rsun : array of float
+        Orbital separation in [R⊙].
     ecc : array of float
         Orbital eccentricity (dimensionless).
     spin : array of float
@@ -1005,7 +1005,7 @@ def L_bolo(used_grid, bin_state, lg_mtransfer_rate, acc_log_mdot, donor_log_wind
     Donor_surface_H1 = np.asarray(Donor_surface_H1, dtype=float)
     donor_He_core_mass = np.asarray(donor_He_core_mass, dtype=float)
     Donor_RL_radius = np.asarray(Donor_RL_radius, dtype=float)
-    a_cm = np.asarray(a_cm, dtype=float)
+    a_Rsun = np.asarray(a_Rsun, dtype=float)
     ecc = np.asarray(ecc, dtype=float)
     spin = np.asarray(spin, dtype=float)
     lg_mtransfer_rate = np.asarray(lg_mtransfer_rate, dtype=float)
@@ -1037,7 +1037,7 @@ def L_bolo(used_grid, bin_state, lg_mtransfer_rate, acc_log_mdot, donor_log_wind
     #===== Wind calculation for detached systems =====
     Vwind = Wind_velocity_BHL(Mdonor, Donor_log_radius, donor_log_L, donor_lgmdot_wind, 
                               Donor_surface_H1, donor_He_core_mass, Wind_velo_scheme=Wind_velo_scheme)
-    Mdot_BHL = BHL_mdot_acc(Macc, Mdonor, acc_state, Donor_log_radius, donor_lgmdot_wind, a_cm, ecc, Vwind, spin, **BHL_kwargs)
+    Mdot_BHL = BHL_mdot_acc(Macc, Mdonor, acc_state, Donor_log_radius, donor_lgmdot_wind, a_Rsun, ecc, Vwind, spin, **BHL_kwargs)
 
     #Winds-NS/BH
     Mdot = np.where(mask_detached, Mdot_BHL, Mdot)
@@ -1221,9 +1221,9 @@ def XRB_selection_function(history_chunk, oneline_chunk, formation_channels_chun
     kwargs = {k: v for k, v in kwargs.items() if k !='used_grid'}
 
     #===== Filtering Be-systems =====
-    orbital_separation = orbital_separation_from_period(oneline_chunk['orbital_period_f'], oneline_chunk['S1_mass_f'], oneline_chunk['S2_mass_f'])
+    orbital_separation = orbital_separation_from_period(oneline_chunk['orbital_period_f'], oneline_chunk['S1_mass_f'], oneline_chunk['S2_mass_f']) # [R⊙]
 
-    Donor_RL_radius = roche_lobe_radius(oneline_chunk['S2_mass_f'].to_numpy(), oneline_chunk['S1_mass_f'].to_numpy(), orbital_separation)
+    Donor_RL_radius = roche_lobe_radius(oneline_chunk['S2_mass_f'].to_numpy(), oneline_chunk['S1_mass_f'].to_numpy(), orbital_separation) # [R⊙]
     Donor_RL_series = pd.Series(Donor_RL_radius, index=oneline_chunk.index)
 
     mask_be = ((oneline_chunk['S2_state_f'] == 'H-rich_Core_H_burning')
@@ -1286,7 +1286,7 @@ def XRB_selection_function(history_chunk, oneline_chunk, formation_channels_chun
 
         bin_state = df['state_f']
         lg_mtransfer_rate = df['lg_mtransfer_rate_f']
-        a_cm = const.Rsun * orbital_separation_from_period(df['orbital_period_f'], df['S1_mass_f'], df['S2_mass_f'])
+        a = orbital_separation_from_period(df['orbital_period_f'], df['S1_mass_f'], df['S2_mass_f']) # [R⊙]
         Donor_RL_radius = Rest_Donor_RL_radius.loc[df.index].to_numpy()
         ecc = df['eccentricity_f']
 
@@ -1298,7 +1298,7 @@ def XRB_selection_function(history_chunk, oneline_chunk, formation_channels_chun
         Lx, Edd_state, beaming, Weight_times_beaming = L_bolo(
             used_grid, bin_state, lg_mtransfer_rate, acc_log_mdot, donor_log_wind_mdot, acc_state,
             Donor_log_lum, Macc, Mdonor, Acc_log_radius, Donor_log_radius,
-            Donor_surface_H1, donor_He_core_mass, Donor_RL_radius, a_cm, ecc, spin_acc, B_surface,
+            Donor_surface_H1, donor_He_core_mass, Donor_RL_radius, a, ecc, spin_acc, B_surface,
             **kwargs
         )
 
@@ -1321,7 +1321,7 @@ def XRB_selection_function(history_chunk, oneline_chunk, formation_channels_chun
         out['Accretor_LogMdot'] = acc_log_mdot
         out['Donor_LogMdot_wind'] = donor_log_wind_mdot
         out['lg_mtransfer_rate'] = lg_mtransfer_rate
-        out['Orbital_separation'] = a_cm
+        out['Orbital_separation'] = a
         out['Eccentricity'] = ecc
         out['System_type'] = name
         out['Eddington_state'] = Edd_state
