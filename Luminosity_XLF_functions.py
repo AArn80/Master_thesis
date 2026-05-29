@@ -1,4 +1,4 @@
-__version__ = "1.3.1"
+__version__ = "1.4.0"
 
 __author__ = "Arnaud Aguet <arnaud.aguet@etu.unige.ch><arnaud552000@gmail.com>"
 
@@ -187,7 +187,7 @@ def Systems_selection_for_XRB(path_file_h5, filename_out, verbose=True):
 
 def Eddington_limit(accretor_mass, Donor_surface_H1, eta):
     """
-    Compute the Eddington accretion rate from the accretor mass, its accretion efficieny and the content of hydrogen at the surface of the donor star.
+    Compute the Eddington mass accretion rate from the accretor mass, its accretion efficiency and the content of hydrogen at the surface of the donor star.
     Also compute the Eddington luminosity.
 
     Parameters
@@ -368,7 +368,7 @@ def Wind_velocity_BHL(donor_mass, donor_logR, donor_logL, donor_log_wind_mdot,
                       donor_surface_H1, donor_He_core_mass, 
                       Wind_velo_scheme ='Kudritzki+2000'):
     """
-    Compute the wind velocity of the donor star in a detached binary system using either the prescription from :cite:`Hurley et al. 2002`   or :cite:`Kudritzki & Puls 2000`. 
+    Compute the wind velocity of the donor star in a detached binary system using either the prescription from :cite:`Hurley et al. 2002` or :cite:`Kudritzki & Puls 2000`. 
     
     This wind velocity is relevant for the calculation of the BHL accretion rate in **BHL_mdot_acc()** for detached systems, 
     where the accretion happens through winds. 
@@ -503,7 +503,7 @@ def Wind_velocity_BHL(donor_mass, donor_logR, donor_logL, donor_log_wind_mdot,
     return V_wind_out
 
 def BHL_mdot_acc(Macc_Msun, donor_mass_Msun, accretor_type, donor_log_radius,
-                 donor_log_wind_mdot, a_Rsun, ecc, V_wind, spin, **kwargs):
+                 donor_log_wind_mdot, a_Rsun, ecc, V_wind, spin, Donor_RL_radius, **kwargs):
     """
     Compute the `Bondi-Hoyle-Lyttleton (BHL)`accretion rate for a detached binary system where the accretion happens through winds.
     These winds are assumed to be isotropic and the accretion is assumed to be spherically symmetric.
@@ -528,10 +528,12 @@ def BHL_mdot_acc(Macc_Msun, donor_mass_Msun, accretor_type, donor_log_radius,
         Wind velocity of the donor star in [cm/s]. Comes from the function **Wind_velocity_BHL()**.
     spin : array of float
         Spin of the accretor. Only required for BH. It is the dimensionless spin parameter a* = cJ/(GM^2).
+    Donor_RL_radius : array of float
+        Roche lobe radius of the donor star in [R⊙]. It is used to check if the donor star is close to filling its Roche lobe, which can increase the accretion efficiency due to the formation of a disk around the accretor in wind-fed systems.
     **kwargs : dict, optional
         - alpha_BHL (float, *Default = 1.5*) : Dimensionless efficiency parameter for the BHL accretion rate and it should be in the range [1.0, 2.0]. 
             It accounts for the efficiency of the accretion process and can be used to calibrate the BHL accretion rate with observations or more detailed simulations.
-        - Wind_Disk_BH_formation (bool, *Default = False*) : If True, it assumes that infalling material forms a disk around the BH before being accreted, which can increase the accretion efficiency.
+        - Wind_Disk_BH_formation (str, *Default = None*) : If 'Senk2021' or 'HiraiMandel21', it check if some criteria are met for the infalling material to form a disk around the BH before being accreted, which can increase the accretion efficiency [[3]_] [[5]_]. `Senk2021` checks if the circularization radius of the infalling material is larger than the ISCO radius of the BH, while `HiraiMandel21` checks if the donor star fills at least 80% of its Roche lobe. 
 
     Returns
     -------
@@ -550,6 +552,10 @@ def BHL_mdot_acc(Macc_Msun, donor_mass_Msun, accretor_type, donor_log_radius,
     .. [4] Bambi, C., Malafarina, D., & Tsukamoto, N. (2014).
             "Note on the radiation emitted by a thin accretion disk around a rotating compact object."
             *Phys. Rev. D*, 89(12), 127302. https://arxiv.org/abs/1406.2181
+    .. [5] Hirai, R. & Mandel, I. (2021).  
+           *Conditions for accretion disc formation and observability of wind-accreting X-ray binaries.*. 
+           Publications of the Astronomical Society of Australia, 38, e056.  
+           https://doi.org/10.1017/pasa.2021.53
     """
 
     #===== Optional parameters =====
@@ -560,10 +566,10 @@ def BHL_mdot_acc(Macc_Msun, donor_mass_Msun, accretor_type, donor_log_radius,
     if not (1.0 <= alpha_BHL <= 2.0):
         Pwarn("alpha_BHL must be in the range [1.0, 2.0]", category="InappropriateValueWarning")
 
-    wind_disk_BH = kwargs.get('Wind_Disk_BH_formation', False)
-    if not isinstance(wind_disk_BH, bool):
-        Pwarn("Wind_Disk_BH_formation must be a boolean value (True or False)", category="InappropriateValueWarning")
-        wind_disk_BH = False
+    wind_disk_BH = kwargs.get('Wind_Disk_BH_formation', None)
+    if not isinstance(wind_disk_BH, str) or wind_disk_BH not in [None, 'Senk2021', 'HiraiMandel21']:
+        Pwarn("Wind_Disk_BH_formation must be None, 'Senk2021' or 'HiraiMandel21'.", category="InappropriateValueWarning")
+        wind_disk_BH = None
 
     if unknown:
         Pwarn(f"BHL_mdot_acc: unknown parameter(s): {unknown} (PID={os.getpid()})", category="InappropriateValueWarning")
@@ -578,6 +584,7 @@ def BHL_mdot_acc(Macc_Msun, donor_mass_Msun, accretor_type, donor_log_radius,
     ecc_arr = np.asarray(ecc, dtype=float)
     v_wind_arr = np.asarray(V_wind, dtype=float)
     spin_arr = np.asarray(spin, dtype=float)
+    donor_RL_arr = np.asarray(Donor_RL_radius, dtype=float) * const.Rsun # [cm]
 
     #===== Calculation Mdot BHL =====
     Mdot_BHL_gps = np.zeros_like(acc_mass_arr, dtype=float)
@@ -588,13 +595,14 @@ def BHL_mdot_acc(Macc_Msun, donor_mass_Msun, accretor_type, donor_log_radius,
         Macc_i = float(acc_mass_arr[idx])
         Mdon_i = float(don_mass_arr[idx])
         acc_type_i = acc_type_arr[idx]
-        Rdon_i = float(10**logR_donor_arr[idx] * const.Rsun)
+        Rdon_i = float(10**logR_donor_arr[idx] * const.Rsun) # Convert from [R⊙] to [cm]
         logMdot_w_i = float(logMdot_w_arr[idx])
         mdot_w_i = float(10**logMdot_w_i)
         a_i = float(a_arr_cm[idx])
         ecc_i = float(np.clip(ecc_arr[idx], 0.0, 0.999)) if np.isfinite(ecc_arr[idx]) else 0.0
         v_wind_i = float(v_wind_arr[idx])
         spin_i = float(spin_arr[idx])
+        donor_RL_i = float(donor_RL_arr[idx])
 
         if not np.isfinite(a_i) or a_i <= 0.0 or not np.isfinite(v_wind_i) or v_wind_i < 0.0:
             Mdot_BHL_gps[idx] = 0.0
@@ -657,7 +665,7 @@ def BHL_mdot_acc(Macc_Msun, donor_mass_Msun, accretor_type, donor_log_radius,
         Mdot_BHL = frac * Mdot_w_cgs
 
         # From [3], check if an accretion disk can form around the BH accretor
-        if wind_disk_BH and acc_type_i == 'BH':
+        if (wind_disk_BH == 'SenK2021') and (acc_type_i == 'BH'):
             eta_bh, r_ISCO_bh = BH_efficiency(spin_i)
             gamma = r_ISCO_bh / 6.0 # From [4]
             q = Mdon_cgs / Macc_cgs
@@ -667,6 +675,11 @@ def BHL_mdot_acc(Macc_Msun, donor_mass_Msun, accretor_type, donor_log_radius,
             )
             if Rdisk_div_RISCO < 1.0:
                 Mdot_BHL = 1e-99 # Avoid division by 0
+
+        # [5] Hirai & Mandel 2021
+        if (wind_disk_BH == 'HiraiMandel21') and (acc_type_i == 'BH'):
+            if Rdon_i < donor_RL_i * 0.8:
+                Mdot_BHL = 1e-99
 
         Mdot_BHL_gps[idx] = float(Mdot_BHL)
 
@@ -932,9 +945,8 @@ def L_bolo(used_grid, bin_state, lg_mtransfer_rate, acc_log_mdot, donor_log_wind
     B_surface : array of float
         Surface magnetic field of the accretor in [G]. Only required for NS accretors.
     **kwargs : dict, optional
-        - high_filling_RL : str, default=None
-            Check whether the donor star fills at least 80% of its Roche lobe to get winds. Option : 'HiraiMandel21' chooses >= 80% filled systems.
-    
+        Keywords arguments are passted to the downstream functions.
+
     Returns
     -------
     Tuple of arrays
@@ -965,21 +977,14 @@ def L_bolo(used_grid, bin_state, lg_mtransfer_rate, acc_log_mdot, donor_log_wind
            *Black holes in binary systems. Observational appearance.*. 
            Astronomy and Astrophysics, 24, 337.  
            https://ui.adsabs.harvard.edu/abs/1973A%26A....24..337S
-    .. [5] Hirai, R. & Mandel, I. (2021).  
-           *Conditions for accretion disc formation and observability of wind-accreting X-ray binaries.*. 
-           Publications of the Astronomical Society of Australia, 38, e056.  
-           https://doi.org/10.1017/pasa.2021.53
+    
     """
 
     #===== Optional parameters =====
-    allowed_keys = {'high_filling_RL', 'alpha_BHL', 'Wind_Disk_BH_formation', 'Wind_velo_scheme', 'spin_split'}
+    allowed_keys = {'alpha_BHL', 'Wind_Disk_BH_formation', 'Wind_velo_scheme', 'spin_split'}
     unknown = sorted(set(kwargs.keys()) - allowed_keys)
     if unknown:
             Pwarn(f"L_bolo(): unknown parameter(s): {unknown}", category="InappropriateValueWarning")
-
-    high_filling_RL = kwargs.get('high_filling_RL', None)
-    if high_filling_RL not in [None, 'HiraiMandel21']:
-        Pwarn(f"high_filling_RL '{high_filling_RL}' not recognized. Choose 'HiraiMandel21' or None.", category="InappropriateValueWarning")
 
     # Passed to BHL_mdot_acc function
     BHL_kwargs = {key: kwargs[key] for key in ['alpha_BHL', 'Wind_Disk_BH_formation'] if key in kwargs}
@@ -1037,7 +1042,7 @@ def L_bolo(used_grid, bin_state, lg_mtransfer_rate, acc_log_mdot, donor_log_wind
     #===== Wind calculation for detached systems =====
     Vwind = Wind_velocity_BHL(Mdonor, Donor_log_radius, donor_log_L, donor_lgmdot_wind, 
                               Donor_surface_H1, donor_He_core_mass, Wind_velo_scheme=Wind_velo_scheme)
-    Mdot_BHL = BHL_mdot_acc(Macc, Mdonor, acc_state, Donor_log_radius, donor_lgmdot_wind, a_Rsun, ecc, Vwind, spin, **BHL_kwargs)
+    Mdot_BHL = BHL_mdot_acc(Macc, Mdonor, acc_state, Donor_log_radius, donor_lgmdot_wind, a_Rsun, ecc, Vwind, spin, Donor_RL_radius, **BHL_kwargs)
 
     #Winds-NS/BH
     Mdot = np.where(mask_detached, Mdot_BHL, Mdot)
@@ -1101,11 +1106,6 @@ def L_bolo(used_grid, bin_state, lg_mtransfer_rate, acc_log_mdot, donor_log_wind
                              'Sub-Eddington', 'Super-Eddington')
         beaming = b
         
-    # [5] Hirai & Mandel 2021
-    if (high_filling_RL == 'HiraiMandel21'):
-        mask_hirai = (10**Donor_log_radius / Donor_RL_radius < 0.8) & (bin_state == 'detached') & (acc_state == 'BH')
-        Lx = np.where(mask_hirai, 10**(-54), Lx)
-    
 
     return Lx, Edd_state, beaming, Weight_times_beaming
 
@@ -1138,10 +1138,13 @@ def XRB_selection_function(history_chunk, oneline_chunk, formation_channels_chun
         - alpha_BHL (float, default = 1.5) : efficiency parameter for Bondi-Hoyle-Lyttleton accretion.
         - Wind_velo_scheme (str, default = 'Hurley+2002') : Wind velocity scheme to use in Wind_velocity_BHL function. 
         Can be either 'Hurley+2002' _[[4]] or 'Kudritzki+2000' _[[5]].
-        - high_filling_RL (str, default = None) : Define a minimum threshold for filling the Roche lobe in order to obtain accretion winds. Option : 'HiraiMandel21' check ≥ 80% filled systems _[[3].
-        - Wind_Disk_BH_formation (bool, default = False) : Whether to check for disk formation criteria around BH accretor _[[2]].
+        - Wind_Disk_BH_formation (str, default = None) : Whether to check for disk formation criteria around BH accretor _[[2]] _[[3]].
         - used_grid (str, default = 'classical') : Whether simulations have been performed using GRRMHD grids for RLO-BH systems or with classical grids. 
         It can be either 'GRRMHD' or 'classical'.
+        - N_GRRMHD_stack (int, default = 1) : Number of GRRMHD systems to stack in order to have a smoother interpolation of the beaming factor as a function of the spin of the black hole.
+        This is only used if `used_grid` is set to 'GRRMHD'. Only black holes systems accreting via Roche lobe overflow are considered. 
+        This stack is useful for these systems because we select a random viewing angle to compute the beaming factor, 
+        and therefore by stacking several systems we have a smoother distribution of the beaming factor as a function of the spin of the black hole.
 
     Returns
     -------
@@ -1210,21 +1213,23 @@ def XRB_selection_function(history_chunk, oneline_chunk, formation_channels_chun
             formation_channels_chunk = formation_channels_chunk.copy()
 
     #===== Kwargs control =====
-    allowed_keys = {'alpha_BHL', 'Wind_velo_scheme', 'high_filling_RL', 'Wind_Disk_BH_formation', 'used_grid', 'spin_split'}
+    allowed_keys = {'alpha_BHL', 'Wind_velo_scheme', 'Wind_Disk_BH_formation', 'used_grid', 'spin_split', 'N_GRRMHD_stack'}
     unknown = sorted(set(kwargs.keys()) - allowed_keys)
     if unknown:
-        Pwarn(f"XRB_selection_function: unknown parameter(s): {unknown} (PID={os.getpid()})."
+        Pwarn(f"XRB_selection_function: unknown parameter(s): {unknown}."
               f"These will be passed to downstream functions.", 
               category="InappropriateValueWarning")
-              
+        
+    N_GRRMHD_stack = kwargs.get('N_GRRMHD_stack', 1)
     used_grid = kwargs.get('used_grid', 'classical')
-    kwargs = {k: v for k, v in kwargs.items() if k !='used_grid'}
+    kwargs = {k: v for k, v in kwargs.items() if k not in ['used_grid', 'N_GRRMHD_stack']}
 
     #===== Filtering Be-systems =====
     orbital_separation = orbital_separation_from_period(oneline_chunk['orbital_period_f'], oneline_chunk['S1_mass_f'], oneline_chunk['S2_mass_f']) # [R⊙]
 
-    Donor_RL_radius = roche_lobe_radius(oneline_chunk['S2_mass_f'].to_numpy(), oneline_chunk['S1_mass_f'].to_numpy(), orbital_separation) # [R⊙]
-    Donor_RL_series = pd.Series(Donor_RL_radius, index=oneline_chunk.index)
+    ecc = oneline_chunk['eccentricity_f'].to_numpy()
+    Donor_RL_radius_periastron = roche_lobe_radius(oneline_chunk['S2_mass_f'].to_numpy(), oneline_chunk['S1_mass_f'].to_numpy(), orbital_separation * (1 - ecc)) # [R⊙]
+    Donor_RL_periastron_series = pd.Series(Donor_RL_radius_periastron, index=oneline_chunk.index)
 
     mask_be = ((oneline_chunk['S2_state_f'] == 'H-rich_Core_H_burning')
                 & (oneline_chunk['S2_mass_f'] >= 6.0)
@@ -1232,7 +1237,7 @@ def XRB_selection_function(history_chunk, oneline_chunk, formation_channels_chun
                 & (oneline_chunk['S2_surf_avg_omega_div_omega_crit_f'] >= 0.7)
                 & (oneline_chunk['orbital_period_f'] >= 10.0)
                 & (oneline_chunk['orbital_period_f'] <= 300.0)
-                & (Donor_RL_radius <= (100.0 * 10**(oneline_chunk['S2_log_R_f'])))
+                & (Donor_RL_radius_periastron <= (100.0 * 10**(oneline_chunk['S2_log_R_f'])))
                 )
 
     Df_Be = oneline_chunk[mask_be].copy()
@@ -1245,7 +1250,7 @@ def XRB_selection_function(history_chunk, oneline_chunk, formation_channels_chun
     if formation_channels_chunk is not None:
         Df_Be['formation_channel'] = formation_channels_chunk.loc[Df_Be.index, 'channel']
 
-    Df_Be['Donor_Roche_Lobe_radius'] = Donor_RL_series.loc[Df_Be.index].to_numpy()
+    Df_Be['Donor_Roche_Lobe_radius'] = Donor_RL_periastron_series.loc[Df_Be.index].to_numpy()
     
     Final_state = Df_Be['S1_state_f']
     is_S1_compact = Final_state.isin(['NS', 'BH'])
@@ -1254,6 +1259,7 @@ def XRB_selection_function(history_chunk, oneline_chunk, formation_channels_chun
     Df_Be['Donor_state'] = np.where(is_S1_compact, Df_Be['S2_state_f'], Df_Be['S1_state_f'])
     Df_Be['Weight_x_beaming'] = True
     Df_Be['Beaming'] = 0.1 # Assumed as a duty cycle of 10% for Be systems
+    Df_Be['N_GRRMHD_stack'] = 1 # Be systems are not affected by the GRRMHD grid, so we set it to 1 for all of them.
 
     #===== RLO / Winds systems =====
     Rest_of_systems = oneline_chunk.loc[~mask_be].copy()
@@ -1262,6 +1268,45 @@ def XRB_selection_function(history_chunk, oneline_chunk, formation_channels_chun
     Wind_mask = Rest_of_systems['state_f'] == 'detached'
     Wind_systems = Rest_of_systems.loc[Wind_mask].copy()
 
+
+    #==========================================================
+    # Monte-Carlo stacking of GRRMHD RLO-BH systems
+    #==========================================================
+
+    if used_grid == 'GRRMHD' and N_GRRMHD_stack > 1:
+
+        # Identify BH systems among RLO systems
+        is_BH_RLO = ((RLO_systems['S1_state_f'] == 'BH') | (RLO_systems['S2_state_f'] == 'BH'))
+
+        # Systems to stack
+        RLO_GRRMHD = RLO_systems.loc[is_BH_RLO].copy()
+
+        # NS-RLO systems
+        RLO_normal = RLO_systems.loc[~is_BH_RLO].copy()
+
+        # Duplicate GRRMHD systems
+        RLO_GRRMHD_stack = pd.concat(
+            [RLO_GRRMHD.copy() for _ in range(N_GRRMHD_stack)],
+            ignore_index=False)
+
+        RLO_GRRMHD_stack['stack_factor'] = N_GRRMHD_stack
+
+        # Normal systems, NS-RLO
+        RLO_normal['stack_factor'] = 1
+
+        # Final RLO dataframe
+        RLO_systems = pd.concat(
+            [RLO_normal, RLO_GRRMHD_stack],
+            ignore_index=False)
+
+    else:
+
+        RLO_systems['stack_factor'] = 1
+
+    Wind_systems['stack_factor'] = 1
+
+    Donor_RL_radius = roche_lobe_radius(oneline_chunk['S2_mass_f'].to_numpy(), oneline_chunk['S1_mass_f'].to_numpy(), orbital_separation) # [R⊙]
+    Donor_RL_series = pd.Series(Donor_RL_radius, index=oneline_chunk.index)
     Rest_Donor_RL_radius = Donor_RL_series.loc[~mask_be]
 
     rows = []
@@ -1327,6 +1372,7 @@ def XRB_selection_function(history_chunk, oneline_chunk, formation_channels_chun
         out['Eddington_state'] = Edd_state
         out['Beaming'] = beaming
         out['Weight_x_beaming'] = Weight_times_beaming
+        out['stack_factor'] = df['stack_factor']
         out['Lx'] = Lx
         if formation_channels_chunk is not None:
             out['formation_channel'] = formation_channels_chunk.loc[df.index, 'channel']
@@ -1339,7 +1385,8 @@ def XRB_selection_function(history_chunk, oneline_chunk, formation_channels_chun
     'Binary_state','Accretor_state','Accretor_spin','Accretor_mass','Accretor_LogR',
     'Donor_state','Donor_mass','Donor_LogR','Donor_Roche_lobe_radius','Donor_LogL',
     'Donor_H1_at_surface','Donor_He_Core_mass','Accretor_LogMdot','Donor_LogMdot_wind',
-    'Orbital_separation','Eccentricity','System_type','Beaming', 'Weight_x_beaming', 'Eddington_state','Lx', 'formation_channel']
+    'Orbital_separation','Eccentricity','System_type','Beaming', 'Weight_x_beaming', 'stack_factor', 
+    'Eddington_state','Lx', 'formation_channel']
 
     final_df = final_df[keep_cols].copy()
 
@@ -1347,97 +1394,6 @@ def XRB_selection_function(history_chunk, oneline_chunk, formation_channels_chun
 
 
 #===== Plotting functions -Cumulative XLF ===== 
-
-# Not needed as calculate_model_weights() function already applies the IMF-based normalization correction to the weights of the systems in the population.
-def Compute_IMF_normalization_correction(Population, m_min = 0.01, m_max = 200.0):
-    """
-    Compute the IMF-based normalization correction factor used to relate
-    a simulated population of massive-star binaries to the total stellar
-    mass formed in a star-forming event.
-
-    This correction follows the method described in Appendix A of Bavera et al. (2020, A&A 635, A97, doi:10.1051/0004-6361/201936204).
-
-    Parameters
-    ----------
-    Population : Population
-        A Population object containing the initial parameters of the population synthesis simulation.
-    m_min : float, optional
-        Minimum stellar mass considered for the normalization [M⊙]. Default is 0.01.
-    m_max : float, optional
-        Maximum stellar mass considered for the normalization [M⊙]. Default is 200.0. 
-        The upper mass limit is restricted to 300 M⊙, corresponding to the maximum ZAMS mass covered by the MESA grids used in POSYDON.
-
-    Returns
-    -------
-    normalization : float
-        The IMF-based normalization correction factor (dimensionless). 
-        normalization = 1 / (fraction of total mass formed in stars that is represented by the modeled population).
-
-    References
-    ----------
-    .. [1]  Bavera, S. S., Fragos, T., Zevin, M., et al. (2020).
-            *The origin of spin in binary black holes.*
-            Astronomy & Astrophysics, 635, A97.
-            DOI: 10.1051/0004-6361/201936204.
-
-    Notes
-    -----
-    This function assumes that the Population object has an attribute
-    `ini_params` which is a dictionary containing the initial parameters
-    of the population synthesis simulation, including the primary mass
-    scheme and binary fraction scheme. 
-    In the appendix A calculation, the factor f_0 is set such as the integral of the IMF (f(m)) over [m_min, m_max] is equal to 1.
-    In the final formula, this factor f_0 cancels out, so it is not explicitly calculated here.
-    The mass ratio _q_ distribution is assumed to be flat in [0, 1]. 
-
-    """
-
-    Ini_params = Population.ini_params.copy()
-
-    # Extract relevant parameters
-    primary_mass_scheme = Ini_params.get('primary_mass_scheme', 'Kroupa2001')
-    m_A = Ini_params.get('primary_mass_min', 5.0)
-    m_B = Ini_params.get('primary_mass_max', 150.0)
-    sec_mass_scheme = Ini_params.get('secondary_mass_scheme', 'flat_mass_ratio')
-    binary_fraction_const = Ini_params.get('binary_fraction_const', 0.7)
-
-    if sec_mass_scheme != 'flat_mass_ratio':
-        raise NotImplementedError(f"The secondary_mass_scheme has to be 'flat_mass_ratio' for Compute_IMF_normalization_correction. Got '{sec_mass_scheme}' instead.")
-    
-    if primary_mass_scheme != 'Kroupa2001':
-        raise NotImplementedError(f"Compute_IMF_normalization_correction: primary_mass_scheme '{primary_mass_scheme}' not implemented yet.")
-    
-    if not (0.01 <= m_min < m_A < m_B < m_max <= 300):
-        raise ValueError(f"Compute_IMF_normalization_correction: m_min and m_max must be within [0.01, 300] and cover at least the range of simulated primary masses.\n Primary_mass_min : {m_A}\n Primary_mass_max : {m_B}")
-    
-    # Kroupa (2001) IMF parameters
-    alpha1 = 0.3
-    alpha2 = 1.3
-    alpha3 = 2.3
-    m_break1 = 0.08 # [M⊙] - Transition slope from alpha1 to alpha2
-    m_break2 = 0.5  # [M⊙] - Transition slope from alpha2 to alpha3
-
-    # Mean mass of stellar systems in the population : 
-    mstar_mean = (1 + binary_fraction_const/2) * (1 / (2 - alpha1) * (m_break1**(2 - alpha1) - m_min**(2 - alpha1)) / m_min**(-alpha1) 
-                                                  + 1 / (2 - alpha2) * (m_break1 / m_min)**(-alpha1) * (m_break2**(2 - alpha2) - m_break1**(2 - alpha2)) / m_break1**(-alpha2)
-                                                  + 1 / (2 - alpha3) * (m_break1 / m_min)**(-alpha1) * (m_break2 / m_break1)**(-alpha2) * 
-                                                    (m_max**(2 - alpha3) - m_break2**(2 - alpha3)) / m_break2**(-alpha3))
-    
-    # Fraction of systems that are modeled if m_A, m_B > m_break2
-    f_model = (binary_fraction_const * 1 / (1 - alpha3) * (m_break1 / m_min)**(-alpha1) * (m_break2/m_break1)**(-alpha2) 
-              * (m_B**(1 - alpha3) - m_A**(1 - alpha3)) / (m_break2**(-alpha3)))
-    
-    # Mean mass of a binary system in the modelled population :
-    mstar_model_mean = 3/2 * (1- alpha3) / (2 -alpha3) * (m_B**(2 - alpha3) - m_A**(2 - alpha3)) / (m_B**(1 - alpha3) - m_A**(1 - alpha3))
-
-    # The total modeled mass represnets only a fraction of the total mass formed in stars.
-    correction_factor = f_model * mstar_model_mean / mstar_mean
-
-    # Normilization with the inverse of the correction factor
-    normalization = 1 / correction_factor
-
-    return float(normalization)
-
 
 def Stat_XLF(transient_population, Lmin=1e30, SFR = 1.0, stat_kwargs=None):
     """
@@ -1530,8 +1486,7 @@ def Stat_XLF(transient_population, Lmin=1e30, SFR = 1.0, stat_kwargs=None):
     else:
         weights_series = np.asarray(base_w, float)  # assume Series-like 
 
-    # If we need to multiply by the beaming factor, we do it here, Otherwise, we assume that the weight already includes beaming (GRRMHD BH-RLO systems only).
-    Weights = weights_series * Total_underlying_mass 
+    Weights = weights_series * Total_underlying_mass / transient_population.population['stack_factor'].to_numpy(dtype=float)
 
     return Weights
 
@@ -1605,7 +1560,7 @@ def plot_ccdf(transient_population, ax, weights, mask, label, SFR = 1.0, **ccdf_
     L = np.log10(transient_population.population['Lx'].to_numpy(dtype = float) * norm_factor)
 
     W_x_b = transient_population.population['Weight_times_beaming'].to_numpy(dtype=bool)
-    b = transient_population.population['Lx'].to_numpy(dtype = float)
+    b = transient_population.population['Beaming'].to_numpy(dtype = float)
     b = np.where(np.isfinite(b) & (b >0), b, 1.0)
 
     selection = mask & np.isfinite(L) & (L >= 35)
@@ -1663,11 +1618,11 @@ def Plot_cumulative_XLF(transient_population, weights, SFR = 1.0, title=None, ax
     title : str, optional
         The title of the plot. If None, no title will be set. Default is None.
     ax : matplotlib.axes.Axes, optional
-        The axes on which to plot the CCDF. If None, a new figure and axes will be created. Default is None.
+        The axes on which to plot the CCDF. If None, a new figure and axes will be created. Default is None. show must be false if ax is not None. 
     figsize : tuple, optional
         The size of the figure to create if ax is None. Default is (6.3, 6.3 * 0.618), which corresponds to a golden ratio aspect.
     show : bool, optional
-        Whether to display the plot. Default is False.
+        Whether to display the plot. Default is False. ax must be None for show=True, otherwise a warning will be raised and the plot will not be shown.
     **plot_kwargs : dict, optional
         Additional keyword arguments for customization of the plot.
         See Notes for allowed keys.
@@ -1845,6 +1800,69 @@ def plot_Lehmer19_XLF(ax, path_fits, SFR_total=45.4, color='#FFB2B2', label='Leh
                      color=color)
     
     hdul.close()
+
+
+#===== Other functions used for my work =====
+
+def find_slope_XLF(Transient_population, verbose=False):
+    """
+    This function calculates the slope of the X-ray luminosity function of black holes accreting via Roche lobe overflow at super-Eddington rates.
+    It follows a power-law in log scale.
+
+    Parameters
+    ----------
+    Transient_population : DataFrame
+            The population of transient sources, containing at least the columns 'System_type', 'Accretor_state', 'Eddington_state', and 'Lx'.
+
+    Returns
+    -------
+    slope : float
+            The slope of the cumulative X-ray luminosity function (N(>L) ~ L^slope).
+    intercept : float
+            The intercept of the linear fit in log-log space.
+    alpha_diff : float
+            The differential slope of the X-ray luminosity function (dN/dL ~ L^-alpha_diff), where alpha_diff = 1 - slope.
+    """
+
+    df = Transient_population.population.copy()
+
+    # Mask RLO-BH super-Eddington
+    mask = ((df['System_type'] == 'RLO') & 
+           (df['Accretor_state'] == 'BH') &
+           (df['Eddington_state'] == 'Super-Eddington')
+           )
+    
+    Lx = df.loc[mask, 'Lx'].to_numpy(dtype=float)
+    Lx = Lx[Lx > 0]
+
+    if len(Lx) < 2: 
+        return None, None, None
+    # CCDF
+    L_sorted = np.sort(Lx)
+    N_cum = np.arange(len(L_sorted), 0, -1)
+
+    # Fit range
+    sel = (L_sorted >= 1e39) & (L_sorted <= 1e44)
+
+    if sel.sum() < 2:
+        print('Not enough points in the range 1e39-1e44 to perform a fit.')
+        return None, None, None
+    
+    logL = np.log10(L_sorted[sel])
+    logN = np.log10(N_cum[sel])
+
+    # Linear fit in log-log
+    slope, intercept = np.polyfit(logL, logN, 1)
+
+    #  dN/dL ~ L^{-alpha}
+    alpha_diff = 1.0 - slope
+
+    if verbose:
+        print(f"Linear fit (N(>L) vs L): slope = {slope:.4f}, intercept = {intercept:.4f}")
+        print(f"Differential index (alpha) of the power law (dN/dL ~ L^-alpha) = {alpha_diff:.4f}")
+
+    return slope, intercept, alpha_diff
+
 
 #===== Functions improved from common_functions.py =====
 
